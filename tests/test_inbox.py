@@ -48,12 +48,14 @@ def _cfg() -> tuple[AcquisitionConfig, VaultConfig]:
     return AcquisitionConfig(), VaultConfig(inbox_note=INBOX, completed_note=COMPLETED)
 
 
-def _seed_video(db: Any, *, note_path: str | None, title: str = "A Video") -> None:
+def _seed_video(db: Any, *, note_path: str | None, title: str = "A Video",
+    created_at: str = "2026-10-10T08:00:00+00:00",
+) -> None:
     db.execute(
         "INSERT INTO videos (id, video_id, url, canonical_url, metadata, note_path, "
         "stage_resolve, stage_metadata, created_at, updated_at) "
-        "VALUES (?, ?, 'u', 'u', ?, ?, 'done', 'done', 'now', 'now')",
-        (f"youtube:{VID}", VID, json.dumps({"title": title}), note_path),
+        "VALUES (?, ?, 'u', 'u', ?, ?, 'done', 'done', ?, ?)",
+        (f"youtube:{VID}", VID, json.dumps({"title": title}), note_path, created_at, created_at),
     )
     db.commit()
 
@@ -177,7 +179,27 @@ async def test_completed_note_is_appended_to_not_overwritten(tmp_path: Path) -> 
     completed = vault.written(COMPLETED)
     assert "[[13 video-summaries/older.md|Older Video]]" in completed
     assert f"[[{NOTE}|Second Video]]" in completed
-    assert completed.index("Older") < completed.index("Second")
+    assert completed.index("## 2026-10-10") < completed.index("Second")
+    assert completed.index("Second") < completed.index("## Older") < completed.index("Older Video")
+
+
+@pytest.mark.asyncio
+async def test_completed_is_grouped_by_request_day_newest_first(tmp_path: Path) -> None:
+    db = connect(tmp_path / "s.sqlite")
+    _seed_video(db, note_path=NOTE, title="New", created_at="2026-10-10T08:00:00+00:00")
+    acq, vcfg = _cfg()
+    vault = FakeVault(
+        {
+            INBOX: f"- https://youtu.be/{VID}\n",
+            COMPLETED: "## 2026-10-01\n- [[a.md|A]]\n\n## Older\n- [[b.md|B]]\n",
+        }
+    )
+
+    await poll_inbox(db, vault, acq, vcfg)  # type: ignore[arg-type]
+
+    completed = vault.written(COMPLETED)
+    order = ["## 2026-10-10", "|New]]", "## 2026-10-01", "[[a.md|A]]", "## Older", "[[b.md|B]]"]
+    assert [completed.index(x) for x in order] == sorted(completed.index(x) for x in order)
 
 
 @pytest.mark.asyncio
@@ -237,4 +259,4 @@ async def test_indentation_and_bullet_style_are_preserved(tmp_path: Path) -> Non
 
     await poll_inbox(db, vault, acq, vcfg)  # type: ignore[arg-type]
 
-    assert vault.written(COMPLETED).startswith("  * [[")
+    assert "\n  * [[" in vault.written(COMPLETED)

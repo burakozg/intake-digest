@@ -19,6 +19,7 @@ from typing import Literal
 
 from ..config import AcquisitionConfig
 from ..logging_setup import get_logger
+from ..sources import wired
 from ..sources.youtube import (
     VideoMetadata,
     VideoRejected,
@@ -31,7 +32,7 @@ from ..utils import iso_now, new_job_id
 
 log = get_logger(__name__)
 
-Adapter = Literal["youtube"]
+Adapter = Literal["youtube", "wired"]
 Origin = Literal["manual", "watchlist", "inbox"]
 
 FetchMetadataFn = Callable[[str], VideoMetadata]
@@ -64,6 +65,15 @@ def _default_fetch(cfg: AcquisitionConfig) -> FetchMetadataFn:
     return fetch
 
 
+def _default_fetch_wired(cfg: AcquisitionConfig) -> FetchMetadataFn:
+    def fetch(url: str) -> VideoMetadata:
+        slug = wired.resolve_url(url)
+        assert slug is not None
+        return wired.fetch_metadata(slug, max_duration_minutes=cfg.max_duration_minutes)
+
+    return fetch
+
+
 def _default_expand(cfg: AcquisitionConfig) -> ExpandPlaylistFn:
     def expand(playlist_id: str, cap: int) -> list[str]:
         return expand_playlist(playlist_id, cap=cap)
@@ -89,6 +99,16 @@ def enqueue(
     """
     fetch = _fetch or _default_fetch(cfg)
     expand = _expand or _default_expand(cfg)
+
+    wired_slug = wired.resolve_url(url)
+    if wired_slug is not None:
+        fetch_wired = _fetch or _default_fetch_wired(cfg)
+        return [
+            _resolve_one(
+                db, url, wired.canonical_url(wired_slug), origin, force, force_asr,
+                "wired", fetch_wired, wired_slug,
+            )
+        ]
 
     resolved = resolve_url(url)
     if resolved is None:
@@ -306,4 +326,5 @@ def metadata_from_row(row: sqlite3.Row) -> VideoMetadata:
         manual_sub_langs=stored.get("manual_sub_langs") or [],
         auto_caption_langs=stored.get("auto_caption_langs") or [],
         thumbnail_url=stored.get("thumbnail_url"),
+        adapter=row["adapter"],
     )

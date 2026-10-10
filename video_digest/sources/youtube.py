@@ -150,6 +150,8 @@ class VideoMetadata:
     manual_sub_langs: list[str] = field(default_factory=list)
     auto_caption_langs: list[str] = field(default_factory=list)
     thumbnail_url: str | None = None
+    #: Which source adapter produced this (matches `videos.adapter`).
+    adapter: str = "youtube"
 
 
 class VideoRejected(Exception):

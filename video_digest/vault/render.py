@@ -14,7 +14,8 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 
-from ..llm.models import VideoDigest
+from ..llm.models import Highlight, VideoDigest
+from ..sources import wired
 from ..sources.youtube import VideoMetadata
 from ..transcripts.normalize import Transcript
 from .notes import yaml_flow_list as _tag_list
@@ -89,17 +90,24 @@ def render_digest_note(
     topic_links: dict[str, str],
     entity_links: dict[str, str],
 ) -> RenderedNote:
+    is_wired = meta.adapter == wired.ADAPTER
     channel_url = (
-        f"https://www.youtube.com/channel/{meta.channel_id}" if meta.channel_id else None
+        f"https://www.youtube.com/channel/{meta.channel_id}"
+        if meta.channel_id and not is_wired
+        else None
     )
     channel_label = f"[{meta.channel}]({channel_url})" if channel_url else meta.channel
-    watch_url = f"https://www.youtube.com/watch?v={meta.video_id}"
+    watch_url = (
+        wired.canonical_url(meta.video_id)
+        if is_wired
+        else f"https://www.youtube.com/watch?v={meta.video_id}"
+    )
     duration_min = max(1, round(meta.duration_s / 60))
 
     frontmatter_lines = [
         "---",
         "type: video-digest",
-        "source: youtube",
+        f"source: {meta.adapter}",
         f"video_id: {meta.video_id}",
         f"url: {watch_url}",
         f"title: {_yaml_str(meta.title)}",
@@ -116,12 +124,16 @@ def render_digest_note(
     ]
 
     key_points = "\n".join(f"- {p}" for p in digest.key_points) or "- (none)"
+    def _highlight(h: Highlight) -> str:
+        stamp = _format_timestamp(h.t_seconds)
+        if is_wired:
+            # Times are estimated from line lengths and Wired has no ?t= deep
+            # link, so show them as approximate and unlinked.
+            return f"- ~{stamp} — {h.label}"
+        return f"- [{stamp}]({_yt_link(meta.video_id, h.t_seconds)}) — {h.label}"
+
     highlights = (
-        "\n".join(
-            f"- [{_format_timestamp(h.t_seconds)}]"
-            f"({_yt_link(meta.video_id, h.t_seconds)}) — {h.label}"
-            for h in digest.highlights
-        )
+        "\n".join(_highlight(h) for h in digest.highlights)
         or "- (none)"
     )
     entities = ", ".join(_wikilink(e, entity_links) for e in digest.entities) or "(none)"

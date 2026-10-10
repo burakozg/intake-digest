@@ -1,6 +1,6 @@
 # video-digest
 
-Takes a video URL (YouTube first), gets the best available transcript,
+Takes a video URL (YouTube, and wired.com/video/watch pages), gets the best available transcript,
 produces a structured summary, and writes an Obsidian note with deep links
 back into the source — so the content can be read instead of watched. Sibling
 to `podcast-digest`, `security-digest`, `taster`, `clippings-topics` and
@@ -129,3 +129,11 @@ machine runs `~/projects/asr-server` (a `speaches` container speaking the
 OpenAI audio API shape). There is no local fallback — the NAS's realtime
 factor makes local ASR a non-option, the same finding that shaped
 `podcast-digest`'s own remote ASR backend, which this vendors.
+
+## Wired
+
+`wired.com/video/watch/<slug>` URLs are accepted anywhere a YouTube URL is.
+The page carries its own transcript, so there is no yt-dlp or ASR step
+(`sources/wired.py`). The transcript has no timestamps: times are estimated
+from line lengths, so Wired notes show highlight times as `~m:ss` without a
+deep link.

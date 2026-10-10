@@ -265,7 +265,7 @@ async def write_video_note(
     transcript_tier_degraded: bool = False,
     asr_model: str | None = None,
     summary_model: str = "",
-    adapter: str = "youtube",
+    adapter: str | None = None,
 ) -> tuple[str, str]:
     """Write the digest note and the transcript note, update topic pages,
     and return `(note_path, transcript_path)`.
@@ -277,7 +277,7 @@ async def write_video_note(
     # note_names.video_id carries a foreign key to videos.id (the
     # "<adapter>:<video_id>" composite pipeline/resolve.py uses as its
     # primary key), not the bare video id — a row must already exist there.
-    row_id = f"{adapter}:{meta.video_id}"
+    row_id = f"{adapter or meta.adapter}:{meta.video_id}"
     note_name = resolve_note_filename(
         db, row_id, published=meta.upload_date or "", title=meta.title
     )

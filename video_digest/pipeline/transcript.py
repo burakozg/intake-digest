@@ -21,6 +21,7 @@ import httpx
 
 from ..config import AcquisitionConfig, OutputConfig, TranscriptionConfig
 from ..logging_setup import get_logger
+from ..sources import wired
 from ..sources.youtube import VideoMetadata, download_audio
 from ..transcripts.asr import ASRUnavailable, RemoteASRBackend
 from ..transcripts.ladder import NeedsASR
@@ -81,6 +82,7 @@ async def acquire_transcript(
     _acquire_captions: Any = None,
     _probe: Any = None,
     _download: Any = None,
+    _fetch_wired: Any = None,
 ) -> TranscriptAcquired:
     """Raises `ParkedForASR` when the video needs T2 and the worker is not
     answering right now — never raises for "the worker is asleep" as if it
@@ -90,6 +92,12 @@ async def acquire_transcript(
     codebase's established pattern — see `pipeline/resolve.py`'s `_fetch`),
     not part of the intended call surface.
     """
+    if meta.adapter == wired.ADAPTER:
+        # The page carries its own transcript: no captions ladder, no ASR.
+        fetch_wired = _fetch_wired or wired.fetch_paragraphs
+        paragraphs = await asyncio.to_thread(fetch_wired, meta.video_id, meta.duration_s)
+        return TranscriptAcquired(transcript=Transcript(paragraphs=paragraphs), tier="T0")
+
     ladder = _acquire_captions or acquire_captions
     probe = _probe or probe_asr_worker
     download = _download or _download_audio_sync

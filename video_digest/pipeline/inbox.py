@@ -69,7 +69,7 @@ async def poll_inbox(
         return 0
 
     remaining: list[str] = []
-    finished: list[str] = []
+    finished: list[tuple[str, str | None]] = []
     changed = 0
     for line in current.splitlines():
         done = _resolve_line(db, line, acquisition_cfg, vault_cfg)
@@ -89,10 +89,8 @@ async def poll_inbox(
 
     completed_path = vault_cfg.completed_note
     existing = (await vault.read_note(completed_path)) or ""
-    if existing and not existing.endswith("\n"):
-        existing += "\n"  # never append onto the same line as existing content
     await vault.project(
-        completed_path, existing + "\n".join(finished) + "\n", mtime_ms=epoch_ms(), merge=False
+        completed_path, _group_completed(existing, finished), mtime_ms=epoch_ms(), merge=False
     )
 
     log.info(
@@ -101,19 +99,64 @@ async def poll_inbox(
     return changed
 
 
+_DATE_HEADING = re.compile(r"^##\s+(\d{4}-\d{2}-\d{2})\s*$")
+_OLDER = "Older"
+_NOTE_PATH = re.compile(r"\[\[([^\]|]+)")
+
+
+def _group_completed(existing: str, finished: list[tuple[str, str | None]]) -> str:
+    """Re-render the completed note as `## YYYY-MM-DD` sections (the day each
+    video was requested, newest first) with `## Older` last. Anything already
+    in the note that is not under a date heading -- everything written before
+    the grouping existed -- is `Older`, as is a line whose request date cannot
+    be found. The video's own publish date lives in its summary, not here."""
+    sections: dict[str, list[str]] = {}
+    current = _OLDER
+    for line in existing.splitlines():
+        heading = _DATE_HEADING.match(line)
+        if heading:
+            current = heading.group(1)
+        elif line.strip() == f"## {_OLDER}":
+            current = _OLDER
+        elif line.strip():
+            sections.setdefault(current, []).append(line)
+    for line, day in finished:
+        sections.setdefault(day or _OLDER, []).append(line)
+
+    days = sorted((d for d in sections if d != _OLDER), reverse=True)
+    parts = [f"## {d}\n" + "\n".join(sections[d]) for d in days]
+    if _OLDER in sections:
+        parts.append(f"## {_OLDER}\n" + "\n".join(sections[_OLDER]))
+    return "\n\n".join(parts) + "\n"
+
+
+def _request_day(db: sqlite3.Connection, video_id: str) -> str | None:
+    row = db.execute("SELECT created_at FROM videos WHERE video_id = ?", (video_id,)).fetchone()
+    return str(row["created_at"])[:10] if row and row["created_at"] else None
+
+
 def _resolve_line(
     db: sqlite3.Connection,
     line: str,
     acquisition_cfg: AcquisitionConfig,
     vault_cfg: VaultConfig,
-) -> list[str] | None:
-    """``None`` to leave ``line`` in the queue untouched; otherwise the line(s)
-    to append to the completed note in its place."""
+) -> list[tuple[str, str | None]] | None:
+    """``None`` to leave ``line`` in the queue untouched; otherwise the
+    ``(line, request_day)`` pair(s) to add to the completed note in its place."""
     if _WIKILINK.search(line):
         # Already resolved — either this poll's own doing on an earlier line
         # of a playlist, or one written before the queue/completed split
-        # existed. Either way it does not belong in the queue any more.
-        return [line]
+        # existed. Either way it does not belong in the queue any more. Its
+        # request day is recovered from the note it links to, if we know it.
+        link = _NOTE_PATH.search(line)
+        row = (
+            db.execute(
+                "SELECT created_at FROM videos WHERE note_path = ?", (link.group(1),)
+            ).fetchone()
+            if link
+            else None
+        )
+        return [(line, str(row["created_at"])[:10] if row else None)]
 
     match = _URL.search(line)
     if match is None:
@@ -130,6 +173,7 @@ def _resolve_line(
         return None
 
     links = [_note_link(db, r.video_id) for r in results]
+    days = [_request_day(db, r.video_id) for r in results]
     if any(link is None for link in links):
         # At least one video in this line has no note yet — leave the line as
         # it is and try again next poll.
@@ -138,10 +182,10 @@ def _resolve_line(
     prefix = _PREFIX.match(line)
     head = prefix.group(1) if prefix else ""
     if len(links) == 1:
-        return [f"{head}{links[0]}"]
+        return [(f"{head}{links[0]}", days[0])]
     # A playlist URL expanded to several videos: one bullet per note.
     bullet = head if head.strip() else "- "
-    return [f"{bullet}{link}" for link in links]
+    return [(f"{bullet}{link}", day) for link, day in zip(links, days, strict=True)]
 
 
 def _note_link(db: sqlite3.Connection, video_id: str) -> str | None:
