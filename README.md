@@ -17,7 +17,10 @@ scheduled watcher turns bare URLs dropped into `13 video-summaries/_video-queue.
 into jobs, and once a note exists moves the line out to
 `13 video-summaries/_video-completed.md` as a wikilink rather than rewriting
 it in place — the queue holds only what's new, still running, or failed, and
-is empty the rest of the time.
+is down to a single placeholder line the rest of the time (a 0-byte note
+vanishes in LiveSync, so it is never left empty; a lost one is recreated).
+`_video-completed.md` is grouped by the day each video was requested, newest
+first, with `## Older` for entries the database cannot date.
 `GET /jobs/{id}` reports stage progress, `POST /videos/{id}/rewrite`
 re-renders from the stored digest, `GET /videos` exports finished summaries
 (see below), and `GET /metrics` gives tier / spend totals. Still to do: the iOS Shortcut itself (client-side) and the watchlist

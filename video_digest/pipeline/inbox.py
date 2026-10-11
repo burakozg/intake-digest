@@ -65,7 +65,13 @@ async def poll_inbox(
     except VaultUnavailable as exc:
         log.warning("inbox.vault_unavailable", error=str(exc))
         return 0
-    if current is None:
+    if current is None or not current.strip():
+        # Missing, or left empty by an earlier version: put the note back so
+        # there is somewhere to paste into.
+        await vault.project(
+            queue_path, QUEUE_PLACEHOLDER + "\n", mtime_ms=epoch_ms(), merge=False
+        )
+        log.info("inbox.queue_restored", queue=queue_path)
         return 0
 
     remaining: list[str] = []
@@ -83,14 +89,16 @@ async def poll_inbox(
         return 0
 
     rebuilt = "\n".join(remaining)
-    if current.endswith("\n"):
+    if not rebuilt.strip():
+        rebuilt = QUEUE_PLACEHOLDER
+    if current.endswith("\n") or rebuilt == QUEUE_PLACEHOLDER:
         rebuilt += "\n"
     await vault.project(queue_path, rebuilt, mtime_ms=epoch_ms(), merge=False)
 
     completed_path = vault_cfg.completed_note
     existing = (await vault.read_note(completed_path)) or ""
     await vault.project(
-        completed_path, _group_completed(existing, finished), mtime_ms=epoch_ms(), merge=False
+        completed_path, _group_completed(db, existing, finished), mtime_ms=epoch_ms(), merge=False
     )
 
     log.info(
@@ -99,12 +107,31 @@ async def poll_inbox(
     return changed
 
 
+#: What an otherwise-empty queue note holds. LiveSync/Obsidian treat a 0-byte
+#: note as gone, so the queue always keeps one line of text. It is not a URL,
+#: so the watcher leaves it alone.
+QUEUE_PLACEHOLDER = "Paste video URLs below, one per line."
+
 _DATE_HEADING = re.compile(r"^##\s+(\d{4}-\d{2}-\d{2})\s*$")
 _OLDER = "Older"
 _NOTE_PATH = re.compile(r"\[\[([^\]|]+)")
 
 
-def _group_completed(existing: str, finished: list[tuple[str, str | None]]) -> str:
+def _line_day(db: sqlite3.Connection, line: str) -> str | None:
+    """The request day of the video a completed-note line links to, from the
+    `videos` table via its note path; None when the line links nothing we know."""
+    link = _NOTE_PATH.search(line)
+    if link is None:
+        return None
+    row = db.execute(
+        "SELECT created_at FROM videos WHERE note_path = ?", (link.group(1),)
+    ).fetchone()
+    return str(row["created_at"])[:10] if row and row["created_at"] else None
+
+
+def _group_completed(
+    db: sqlite3.Connection, existing: str, finished: list[tuple[str, str | None]]
+) -> str:
     """Re-render the completed note as `## YYYY-MM-DD` sections (the day each
     video was requested, newest first) with `## Older` last. Anything already
     in the note that is not under a date heading -- everything written before
@@ -119,7 +146,11 @@ def _group_completed(existing: str, finished: list[tuple[str, str | None]]) -> s
         elif line.strip() == f"## {_OLDER}":
             current = _OLDER
         elif line.strip():
-            sections.setdefault(current, []).append(line)
+            # Lines from before the grouping, or filed under Older, are dated
+            # from the database when it knows them -- Older is only for the
+            # ones it cannot place.
+            day = _line_day(db, line) if current == _OLDER else None
+            sections.setdefault(day or current, []).append(line)
     for line, day in finished:
         sections.setdefault(day or _OLDER, []).append(line)
 
@@ -148,15 +179,7 @@ def _resolve_line(
         # of a playlist, or one written before the queue/completed split
         # existed. Either way it does not belong in the queue any more. Its
         # request day is recovered from the note it links to, if we know it.
-        link = _NOTE_PATH.search(line)
-        row = (
-            db.execute(
-                "SELECT created_at FROM videos WHERE note_path = ?", (link.group(1),)
-            ).fetchone()
-            if link
-            else None
-        )
-        return [(line, str(row["created_at"])[:10] if row else None)]
+        return [(line, _line_day(db, line))]
 
     match = _URL.search(line)
     if match is None:

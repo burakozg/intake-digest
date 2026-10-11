@@ -14,7 +14,7 @@ import pytest
 
 from video_digest.config import AcquisitionConfig, VaultConfig
 from video_digest.db import connect
-from video_digest.pipeline.inbox import poll_inbox
+from video_digest.pipeline.inbox import QUEUE_PLACEHOLDER, poll_inbox
 from video_digest.pipeline.resolve import EnqueueResult
 from video_digest.vault.livesync import VaultUnavailable
 
@@ -89,7 +89,7 @@ async def test_the_queue_can_end_up_fully_empty(tmp_path: Path) -> None:
 
     await poll_inbox(db, vault, acq, vcfg)  # type: ignore[arg-type]
 
-    assert vault.written(INBOX) == "\n"
+    assert vault.written(INBOX) == QUEUE_PLACEHOLDER + "\n"
 
 
 @pytest.mark.asyncio
@@ -135,7 +135,7 @@ async def test_an_already_linked_line_migrates_out_without_enqueueing(
     changed = await poll_inbox(db, vault, acq, vcfg)  # type: ignore[arg-type]
 
     assert changed == 1
-    assert vault.written(INBOX) == "\n"
+    assert vault.written(INBOX) == QUEUE_PLACEHOLDER + "\n"
     assert f"[[{NOTE}|Great Talk]]" in vault.written(COMPLETED)
 
 
@@ -158,7 +158,7 @@ async def test_a_bracket_in_the_title_does_not_hide_the_wikilink(
     changed = await poll_inbox(db, vault, acq, vcfg)  # type: ignore[arg-type]
 
     assert changed == 1
-    assert vault.written(INBOX) == "\n"
+    assert vault.written(INBOX) == QUEUE_PLACEHOLDER + "\n"
     assert line in vault.written(COMPLETED)
 
 
@@ -203,10 +203,48 @@ async def test_completed_is_grouped_by_request_day_newest_first(tmp_path: Path) 
 
 
 @pytest.mark.asyncio
-async def test_missing_inbox_note_is_a_noop(tmp_path: Path) -> None:
+async def test_missing_or_empty_queue_is_restored_with_a_placeholder(
+    tmp_path: Path,
+) -> None:
     db = connect(tmp_path / "s.sqlite")
     acq, vcfg = _cfg()
-    assert await poll_inbox(db, FakeVault({}), acq, vcfg) == 0  # type: ignore[arg-type]
+    for initial in ({}, {INBOX: ""}):
+        vault = FakeVault(dict(initial))
+        assert await poll_inbox(db, vault, acq, vcfg) == 0  # type: ignore[arg-type]
+        assert vault.written(INBOX) == QUEUE_PLACEHOLDER + "\n"
+
+
+@pytest.mark.asyncio
+async def test_emptied_queue_keeps_a_line_so_it_is_never_zero_bytes(tmp_path: Path) -> None:
+    db = connect(tmp_path / "s.sqlite")
+    _seed_video(db, note_path=NOTE)
+    acq, vcfg = _cfg()
+    vault = FakeVault({INBOX: f"- https://youtu.be/{VID}\n"})
+
+    await poll_inbox(db, vault, acq, vcfg)  # type: ignore[arg-type]
+
+    assert vault.written(INBOX) == QUEUE_PLACEHOLDER + "\n"
+
+
+@pytest.mark.asyncio
+async def test_older_completed_lines_are_dated_from_the_database(tmp_path: Path) -> None:
+    db = connect(tmp_path / "s.sqlite")
+    _seed_video(db, note_path=NOTE, title="Known", created_at="2026-09-02T20:00:00+00:00")
+    acq, vcfg = _cfg()
+    vault = FakeVault(
+        {
+            INBOX: f"- {QUEUE_PLACEHOLDER}\n- see https://example.com/not-a-video\n",
+            COMPLETED: f"- [[{NOTE}|Known]]\n- [[13 video-summaries/unknown.md|Unknown]]\n",
+        }
+    )
+    # force a rewrite of the completed note via a finished wikilink in the queue
+    vault._notes[INBOX] += "- [[13 video-summaries/zzz.md|Z]]\n"
+
+    await poll_inbox(db, vault, acq, vcfg)  # type: ignore[arg-type]
+
+    completed = vault.written(COMPLETED)
+    assert completed.index("## 2026-09-02") < completed.index("|Known]]")
+    assert completed.index("|Known]]") < completed.index("## Older") < completed.index("|Unknown]]")
 
 
 @pytest.mark.asyncio
@@ -244,7 +282,7 @@ async def test_playlist_line_expands_to_one_bullet_per_note_in_completed(
     changed = await poll_inbox(db, vault, acq, vcfg)  # type: ignore[arg-type]
 
     assert changed == 1
-    assert vault.written(INBOX) == "\n"
+    assert vault.written(INBOX) == QUEUE_PLACEHOLDER + "\n"
     completed = vault.written(COMPLETED)
     assert "- [[13 video-summaries/aaa.md|Vid 0]]" in completed
     assert "- [[13 video-summaries/bbb.md|Vid 1]]" in completed
