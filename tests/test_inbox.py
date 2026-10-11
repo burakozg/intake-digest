@@ -35,7 +35,9 @@ class FakeVault:
             raise VaultUnavailable("couch down")
         return self._notes.get(path)
 
-    async def project(self, path: str, markdown: str, *, mtime_ms: int, merge: bool) -> bool:
+    async def project(
+        self, path: str, markdown: str, *, mtime_ms: int, merge: bool, revive: bool = False
+    ) -> bool:
         self.writes.append((path, markdown))
         self._notes[path] = markdown
         return True

@@ -192,7 +192,13 @@ class LiveSyncVault:
     # ── writing ──────────────────────────────────────────────────────────
 
     async def project(
-        self, path: str, markdown: str, *, mtime_ms: int, merge: bool = True
+        self,
+        path: str,
+        markdown: str,
+        *,
+        mtime_ms: int,
+        merge: bool = True,
+        revive: bool = False,
     ) -> bool:
         """Write one note. False when nothing needed writing.
 
@@ -204,6 +210,11 @@ class LiveSyncVault:
 
         Skipped means the note already says exactly this, or a human deleted
         it and that deletion is being respected.
+
+        ``revive=True`` takes over a soft-deleted entry instead of respecting
+        it. For a note this app owns as an input channel (the video queue),
+        where "deleted" can be a client's reading of an empty file rather than
+        a decision -- never for generated content.
         """
         if self._client is None:
             raise VaultUnavailable("vault.couchdb_url is not set")
@@ -236,7 +247,7 @@ class LiveSyncVault:
             "type": "plain",
             "eden": {},
         }
-        written = await self._put_entry(entry)
+        written = await self._put_entry(entry, revive=revive)
         if written:
             log.info("vault.projected", path=path, bytes=entry["size"])
         return written
@@ -263,7 +274,7 @@ class LiveSyncVault:
             raise VaultUnavailable(f"conflict on chunk {chunk_id} with no revision to take over")
         await self._put_or_raise(chunk_id, {**body, "_rev": rev})
 
-    async def _put_entry(self, entry: dict[str, Any]) -> bool:
+    async def _put_entry(self, entry: dict[str, Any], *, revive: bool = False) -> bool:
         entry_id = str(entry["_id"])
         response = await self._put(entry_id, entry)
         if response.status_code != 409:
@@ -275,9 +286,13 @@ class LiveSyncVault:
             return False
         if existing.get("deleted"):
             # What deleting a note in Obsidian produces: LiveSync keeps the
-            # document and flags it. Respected.
-            log.info("vault.skipped_deleted", path=entry["path"], deletion="soft")
-            return False
+            # document and flags it. Respected, unless the caller owns the note.
+            if not revive:
+                log.info("vault.skipped_deleted", path=entry["path"], deletion="soft")
+                return False
+            await self._put_or_raise(entry_id, {**entry, "_rev": existing["_rev"]})
+            log.info("vault.revived", path=entry["path"])
+            return True
         if list(existing.get("children") or []) == entry["children"]:
             return False  # already present, byte for byte
 

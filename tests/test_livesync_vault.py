@@ -171,6 +171,28 @@ class TestASoftDeletedNoteStaysDeleted:
         assert entry.call_count == 1  # no resurrecting second write
 
 
+    @respx.mock
+    @pytest.mark.asyncio
+    async def test_revive_takes_over_a_soft_deleted_entry(self) -> None:
+        path = "13 video-summaries/_video-queue.md"
+        respx.put(url__startswith=f"{COUCH}/{DB}/h%3At").mock(
+            return_value=httpx.Response(201, json={"ok": True})
+        )
+        entry = respx.put(_doc_url(path)).mock(
+            side_effect=[httpx.Response(409, json={}), httpx.Response(201, json={"ok": True})]
+        )
+        respx.get(_doc_url(path)).mock(
+            return_value=httpx.Response(
+                200, json={"_id": path, "_rev": "2-abc", "deleted": True, "children": []}
+            )
+        )
+        written = await _vault().project(path, "x\n", mtime_ms=1, merge=False, revive=True)
+        assert written is True
+        assert entry.call_count == 2
+        body = json.loads(entry.calls[1].request.content)
+        assert body["_rev"] == "2-abc" and not body.get("deleted")
+
+
 class TestListPrefix:
     @respx.mock
     @pytest.mark.asyncio

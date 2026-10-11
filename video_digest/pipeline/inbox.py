@@ -68,10 +68,11 @@ async def poll_inbox(
     if current is None or not current.strip():
         # Missing, or left empty by an earlier version: put the note back so
         # there is somewhere to paste into.
-        await vault.project(
-            queue_path, QUEUE_PLACEHOLDER + "\n", mtime_ms=epoch_ms(), merge=False
+        written = await vault.project(
+            queue_path, QUEUE_PLACEHOLDER + "\n", mtime_ms=epoch_ms(), merge=False, revive=True
         )
-        log.info("inbox.queue_restored", queue=queue_path)
+        event = "inbox.queue_restored" if written else "inbox.queue_restore_skipped"
+        log.info(event, queue=queue_path)
         return 0
 
     remaining: list[str] = []
