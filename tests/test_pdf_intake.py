@@ -313,6 +313,12 @@ class TestApi:
         # The job the page polls is readable through the existing endpoint.
         job = client.get(f"/jobs/{first.json()['job_id']}", headers=KEY).json()
         assert job["status"] == "queued"
+        # ...and the same status under /pdfs, which the upload page polls
+        # (Traefik gates /pdfs* with the login and leaves /jobs to machines).
+        via_pdfs = client.get(f"/pdfs/{first.json()['job_id']}", headers=KEY)
+        assert via_pdfs.json() == job
+        assert client.get(f"/pdfs/{first.json()['job_id']}").status_code == 401
+        assert client.get("/pdfs/nope", headers=KEY).status_code == 404
 
     def test_non_pdfs_and_oversize_are_refused(self, tmp_path: Path) -> None:
         client = TestClient(_app(tmp_path, max_upload_mb=1))

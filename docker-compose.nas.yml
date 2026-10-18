@@ -67,6 +67,13 @@ services:
         # applies to only one interface and would land on the wrong one on a
         # multi-network service (homelab/README.md "Pin MAC addresses").
         mac_address: APP_MAC_PLACEHOLDER
+      # Also on the bridge Traefik shares with the central-login apps, so the
+      # browser surface (/upload, /pdfs) can sit behind its forwardAuth under
+      # a hostname — see homelab-auth/README.md. The qnet address stays: the
+      # machine callers (podcast-digest's import, the iOS Shortcut, the
+      # status collector) reach the key-protected API there. Because that
+      # address stays, the app keeps its own X-API-Key check on every route.
+      homelab-internal: {}
 
     # The base file's "8090:8090" publish stays alongside this qnet address —
     # same as podcast-agent's own nas overlay (docker-compose.nas.yml there):
@@ -74,4 +81,8 @@ services:
 
 networks:
   QNET_PLACEHOLDER:
+    external: true
+  # Created once and shared with Traefik via `docker network connect`; compose
+  # only joins it (homelab/README.md "A second, private network").
+  homelab-internal:
     external: true

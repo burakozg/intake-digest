@@ -452,7 +452,18 @@ async def get_job(job_id: str, request: Request) -> dict[str, object]:
     """Where a job is: its `jobs.status`, each pipeline stage's state, any
     per-stage error, and the note path once S5 has run. What the iOS
     Shortcut polls after a 202."""
-    db: sqlite3.Connection = request.app.state.db
+    return _job_status(request.app.state.db, job_id)
+
+
+@api_router.get("/pdfs/{job_id}")
+async def get_pdf_job(job_id: str, request: Request) -> dict[str, object]:
+    """`GET /jobs/{id}` under the `/pdfs` prefix, so the upload page can poll
+    without touching `/jobs`: Traefik gates `/upload` and `/pdfs*` behind the
+    central login and leaves `/jobs` to the machine callers."""
+    return _job_status(request.app.state.db, job_id)
+
+
+def _job_status(db: sqlite3.Connection, job_id: str) -> dict[str, object]:
     job = db.execute("SELECT * FROM jobs WHERE id = ?", (job_id,)).fetchone()
     if job is None:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="unknown job_id")
