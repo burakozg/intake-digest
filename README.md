@@ -1,11 +1,12 @@
 # intake-digest
 
 *Formerly `video-digest`.* A queue of **items**, each of a **kind** — `video`
-today, `pdf` next — that is acquired, summarised and written to the vault as
+and `pdf` today — that is acquired, summarised and written to the vault as
 a note. What is the same for every kind (the job queue, stage checkpoints,
 the runner, the LLM client, the vault writer) lives once; what differs is one
-module in `intake_digest/pipeline/kinds/`. The rest of this README describes
-the `video` kind, which is the only one so far.
+module in `intake_digest/pipeline/kinds/`. Both kinds are fed from one queue
+note, `00 intake/_intake_queue.md`. This part of the README describes the
+`video` kind; PDFs have [their own section](#pdfs) below.
 
 Takes a video URL (YouTube, and wired.com/video/watch pages), gets the best available transcript,
 produces a structured summary, and writes an Obsidian note with deep links
@@ -20,14 +21,16 @@ walks it resolve → metadata → transcript → normalise → summarise → wri
 until a note lands in the vault, resuming from the first unfinished stage on
 a retry. Caption-free videos park until the ASR worker is next awake; a
 failed job writes nothing and (when `notifications.enabled`) alerts. A
-scheduled watcher turns bare URLs dropped into `13 video-summaries/_video-queue.md`
-into jobs, and once a note exists moves the line out to
-`13 video-summaries/_video-completed.md` as a wikilink rather than rewriting
+scheduled watcher turns bare URLs dropped into `00 intake/_intake_queue.md`
+into jobs (the old `13 video-summaries/_video-queue.md` is still polled), and
+once a note exists moves the line out to
+`00 intake/_intake_completed.md` as a wikilink rather than rewriting
 it in place — the queue holds only what's new, still running, or failed, and
 is down to a single placeholder line the rest of the time (a 0-byte note
 vanishes in LiveSync, so it is never left empty; a lost one is recreated).
-`_video-completed.md` is grouped by the day each video was requested, newest
-first, with `## Older` for entries the database cannot date.
+The completed note is grouped by the day each item was requested, newest
+first, with `## Older` for entries the database cannot date. Lines moved
+before the rename are still in `13 video-summaries/_video-completed.md`.
 `GET /jobs/{id}` reports stage progress, `POST /videos/{id}/rewrite`
 re-renders from the stored digest, `GET /videos` exports finished summaries
 (see below), and `GET /metrics` gives tier / spend totals. Still to do: the iOS Shortcut itself (client-side) and the watchlist
@@ -37,9 +40,11 @@ It is the **sixth** application writing to this vault, after `taster`,
 `podcast-digest`, `security-digest`, `clippings-topics` and (read-only)
 `vault-ask`. The rules for doing that without eating another writer's work are
 in `~/.claude/skills/obsidian-vault-writer`, and this follows them: whole-file
-ownership with a pinned filename for `13 video-summaries/` and
-`14 video-transcripts/`, section ownership (`<!-- begin:intake-digest -->`,
-`video_` frontmatter prefix) only in the shared `99 topics/`.
+ownership with a pinned filename for `13 video-summaries/`,
+`14 video-transcripts/` and `15 PDFs/`, section ownership
+(`<!-- begin:video-digest -->` — the owner tag kept its pre-rename name, see
+[Renamed from video-digest](#renamed-from-video-digest) — and the `video_`
+frontmatter prefix) only in the shared `99 topics/`, and only for videos.
 
 ```sh
 ./deploy                 # build, ship, bring it up on the NAS
