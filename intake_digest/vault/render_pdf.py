@@ -54,7 +54,12 @@ def render_pdf_note(
         front.append(f"pdf_missing_since: {missing_since}")
     front.append("---")
 
-    body: list[str] = [f"# {digest.title}", ""]
+    # TL;DR first, as a callout, so it is the first thing read in the note (and
+    # the first thing `clippings-topics` sees, which reads only the start).
+    tldr_lines = [line.strip() for line in digest.tldr.strip().splitlines() if line.strip()]
+    body: list[str] = [f"# {digest.title}", "", "> [!tldr] TL;DR"]
+    body += [f"> {line}" for line in tldr_lines]
+    body.append("")
     plural = "s" if total_pages != 1 else ""
     if via == "link":
         body.append(f"Original: <{source}> · {total_pages} page{plural}")
@@ -74,7 +79,7 @@ def render_pdf_note(
             f"> Only the first {pages_read} of {total_pages} pages were read; "
             "this summary does not cover the rest."
         )
-    body += ["", "## Summary", "", digest.tldr.strip(), "", digest.summary_md.strip(), ""]
+    body += ["", "## Summary", "", digest.summary_md.strip(), ""]
     body += ["## Key points", ""] + [f"- {p.strip()}" for p in digest.key_points] + [""]
     if digest.sections:
         body += ["## Sections", ""]

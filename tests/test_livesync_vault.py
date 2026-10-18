@@ -250,6 +250,28 @@ class TestListPrefix:
         assert [e.doc_id for e in entries] == ["99 topics/a.md", "99 topics/z.md"]
 
 
+class TestListPrefixCase:
+    @respx.mock
+    @pytest.mark.asyncio
+    async def test_a_prefix_with_capitals_asks_for_the_lowercased_range(self) -> None:
+        """Entries are keyed by lowercased path; "15 PDFs/" built a range that
+        sorted before every real key and listed nothing."""
+        respx.get(url__startswith=f"{COUCH}/{DB}/_all_docs").mock(
+            return_value=httpx.Response(
+                200,
+                json={"rows": [{
+                    "id": "15 pdfs/a.md",
+                    "value": {"rev": "1-x"},
+                    "doc": {"path": "15 PDFs/a.md", "children": []},
+                }]},
+            )
+        )
+        entries = await _vault().list_prefix("15 PDFs/")
+        params = respx.calls.last.request.url.params
+        assert (params["startkey"], params["endkey"]) == ('"15 pdfs/"', '"15 pdfs0"')
+        assert [e.path for e in entries] == ["15 PDFs/a.md"]
+
+
 class TestMergedTopicWrite:
     """The test that matters most (obsidian-vault-writer skill's checklist
     item 9): another writer's section and the human's prose survive our run

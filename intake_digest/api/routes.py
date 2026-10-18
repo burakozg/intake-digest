@@ -19,6 +19,7 @@ from pydantic import BaseModel, Field
 from .. import __version__
 from ..config import Settings
 from ..logging_setup import get_logger
+from ..pipeline.kinds import get_kind
 from ..pipeline.pdf_intake import (
     LinkRejected,
     LinkUnavailable,
@@ -514,6 +515,28 @@ async def rewrite_video(video_id: str, request: Request) -> dict[str, object]:
             status_code=status.HTTP_503_SERVICE_UNAVAILABLE, detail=f"vault write failed: {exc}"
         ) from exc
     return {"video_id": video_id, "note_path": note_path}
+
+
+@api_router.post("/pdfs/{sha}/rewrite", status_code=status.HTTP_200_OK)
+async def rewrite_pdf(sha: str, request: Request) -> dict[str, object]:
+    """Re-render a PDF's note from its stored digest — no LLM call. Same
+    contract as `/videos/{id}/rewrite`; `sha` is the document's SHA-256."""
+    settings: Settings = request.app.state.settings
+    db: sqlite3.Connection = request.app.state.db
+    vault: LiveSyncVault = request.app.state.vault
+    try:
+        note_path = await get_kind("pdf").rewrite(db, settings, vault, sha)
+    except KeyError as exc:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, detail="unknown pdf") from exc
+    except RewriteUnavailable as exc:
+        raise HTTPException(
+            status.HTTP_409_CONFLICT, detail="pdf has no stored digest yet"
+        ) from exc
+    except VaultUnavailable as exc:
+        raise HTTPException(
+            status.HTTP_503_SERVICE_UNAVAILABLE, detail=f"vault write failed: {exc}"
+        ) from exc
+    return {"sha256": sha, "note_path": note_path}
 
 
 # ── /metrics (design §8) ─────────────────────────────────────────────────

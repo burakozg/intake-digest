@@ -117,6 +117,11 @@ async def test_a_pdf_becomes_a_note_in_the_pdf_folder(tmp_path: Path) -> None:
     (path, md), = vault.written.items()
     assert path == "15 PDFs/2026-10-01-q3-security-report.md"
     assert md.startswith("---\ntype: pdf\ntitle: ")
+    # The TL;DR is the first thing under the title, ahead of everything else.
+    body = md.split("---\n", 2)[2]
+    assert body.index("> [!tldr] TL;DR") < body.index("> Things happened.") < body.index("Original:")
+    assert body.index("Original:") < body.index("## Summary")
+    assert body.count("Things happened.") == 1  # not repeated under Summary
     for needle in ("created: 2026-10-01", "source: ", "r/q3.pdf", "pdf_sha256: abc",
                    "pdf_pages: 2", "pdf_extraction: text", "## Summary", "A **detailed** summary.",
                    "- Point one", "**Intro**", "WorkOS"):
@@ -251,3 +256,43 @@ async def test_long_pdfs_say_when_pages_were_left_out(tmp_path: Path) -> None:
     (md,) = vault.written.values()
     assert "pdf_truncated: true" in md and "pdf_pages_read: 2" in md and "pdf_pages: 4" in md
     assert "Only the first 2 of 4 pages were read" in md
+
+
+@pytest.mark.asyncio
+async def test_the_rewrite_endpoint_rerenders_without_the_llm(tmp_path: Path) -> None:
+    from fastapi.testclient import TestClient
+
+    from intake_digest.main import create_app
+
+    root = tmp_path / "in"
+    settings = Settings(
+        llm=_LLM,
+        transcription={"remote_url": "http://mac.local:8000"},
+        output={"db_path": tmp_path / "state.sqlite", "work_dir": tmp_path / "work"},
+        pdf={"input_dir": root, "store_dir": tmp_path / "store"},
+        admin_api_key="k",
+    )
+    app = create_app(settings)
+    _seed(app.state.db, root, [LONG])
+    row = app.state.db.execute("SELECT * FROM items WHERE id = 'pdf:abc'").fetchone()
+    vault = FakeVault()
+    app.state.vault = vault
+    app.state.db.execute(
+        "UPDATE items SET digest = ?, stage_acquire = 'done', stage_summarize = 'done', "
+        "stage_write = 'done', metadata = ? WHERE id = ?",
+        (
+            DIGEST.model_dump_json(),
+            json.dumps({**json.loads(row["metadata"]), "total_pages": 1, "pages_read": 1}),
+            row["id"],
+        ),
+    )
+    app.state.db.commit()
+    client = TestClient(app)
+    key = {"X-API-Key": "k"}
+
+    body = client.post("/pdfs/abc/rewrite", headers=key).json()
+
+    assert body["note_path"].startswith("15 PDFs/")
+    assert "> [!tldr] TL;DR" in vault.written[body["note_path"]]
+    assert client.post("/pdfs/nope/rewrite", headers=key).status_code == 404
+    assert client.post("/pdfs/abc/rewrite").status_code == 401
