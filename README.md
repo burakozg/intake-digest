@@ -134,26 +134,39 @@ are environment-only: copy `.env.example` to `.env` for local runs, and
 
 ## PDFs
 
-Drop PDFs in a NAS folder and each becomes a note in `15 PDFs/`: a detailed
-summary (TL;DR, prose, key points, the document's sections), with the original
-left where it is and referred to by its path relative to the folder. Topic
-links come later, from `clippings-topics`, which reads these notes
-(`CLIP_EXTRA_PREFIXES="15 PDFs/"`); this app never writes `99 topics/` for
-PDFs.
+Each PDF becomes a note in `15 PDFs/`: a detailed summary (TL;DR, prose, key
+points, the document's sections). Topic links come later, from
+`clippings-topics`, which reads these notes (`CLIP_EXTRA_PREFIXES="15 PDFs/"`);
+this app never writes `99 topics/` for PDFs. They arrive three ways:
 
-- **Turn it on:** set `PDF_INPUT_DIR` (a NAS host path) in `.deploy.env`. It is
-  mounted read-only at `/inbox`; unset, nothing is mounted and the kind stays
-  off. `./deploy` never creates the folder, and the deploy account must be
-  able to read it.
-- **Identity** is the SHA-256 of the file, so renaming or moving a PDF is not a
-  new document and the same file in two folders is one note. A PDF edited in
-  place is a new document; the old note stays.
+- **A link in the intake queue.** Paste a link ending in `.pdf` into
+  `00 intake/_intake_queue.md` (the same note that takes video links; the old
+  `13 video-summaries/_video-queue.md` is still polled). It is fetched once and a
+  copy kept; when the summary note exists the line moves to
+  `00 intake/_intake_completed.md` as a wikilink. A link that cannot work
+  (404/403, not a PDF, too big) stays in the queue and is not fetched again;
+  a timeout or server error is retried on the next poll. `POST /jobs` takes the
+  same links, for the iOS Shortcut.
+- **The upload page.** `http://<host>:8090/upload` — choose or drop PDFs, enter the
+  admin key once (kept in that browser only). `POST /pdfs` takes the file as the
+  request body.
+- **A watched folder (optional, off by default).** Set `PDF_INPUT_DIR` (a NAS host
+  path) in `.deploy.env` and it is mounted read-only at `/inbox` and scanned
+  every 15 minutes. The originals there never move or change. `./deploy` never
+  creates the folder, and the deploy account must be able to read it.
+
+Links and uploads are kept in `/data/pdfs/<sha256>.pdf` — nothing else holds
+those originals — up to `pdf.max_upload_mb` (100) each.
+
+- **Identity** is the SHA-256 of the file: the same document by link, upload and
+  folder is one note, and a renamed or moved file is not a new document. A PDF
+  edited in place is a new document; the old note stays.
 - **Scans:** pages with no text layer are rendered and read by the `vision`
   tier (`llm.tiers.vision`); without that tier a scanned PDF fails with a
   message saying so. Only the first `pdf.max_pages` (40) pages are read, and the
   note says when it covers less than the whole.
-- **Removal** never deletes anything: a PDF that leaves the folder gets
-  `pdf_missing_since` in its note's frontmatter, once. An empty or unmounted
+- **Folder removal** never deletes anything: a PDF that leaves a watched folder
+  gets `pdf_missing_since` in its note's frontmatter, once. An empty or unmounted
   share is not read as "everything was deleted".
 - `GET /items?kind=pdf` is the export; `GET /videos` never includes PDFs.
 

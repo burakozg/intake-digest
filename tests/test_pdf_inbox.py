@@ -66,7 +66,7 @@ def test_a_new_pdf_is_queued_keyed_by_its_content_hash(db, root: Path) -> None:
     assert result.new == [f"pdf:{sha}"]
     (row,) = _items(db)
     assert (row["kind"], row["item_key"], row["adapter"], row["origin"]) == (
-        "pdf", sha, "nas", "inbox",
+        "pdf", sha, "pdf", "folder",
     )
     meta = json.loads(row["metadata"])
     assert meta["source_path"] == "Reports/2026/q3.pdf" and meta["title"] == "q3"

@@ -58,7 +58,7 @@ services:
       # config.yaml (config.py precedence), so the tracked file keeps its
       # harmless default.
       INTAKE_VAULT__USER: admin
-      INTAKE_PDF__ENABLED: "true"  # pdf-input
+      INTAKE_PDF__INPUT_DIR: /inbox  # pdf-input
 
     networks:
       QNET_PLACEHOLDER:

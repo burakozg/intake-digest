@@ -18,9 +18,11 @@ vault:
   notes_dir: "13 video-summaries"
   transcripts_dir: "14 video-transcripts"
   topics_dir: "99 topics"
-  # Inbox watcher's queue note. Inside the notes folder; the "_" prefix
-  # sorts it to the top in Obsidian.
-  inbox_note: "13 video-summaries/_video-queue.md"
+  # Intake queue: paste video or PDF links here, one per line. The "_" prefix
+  # sorts it to the top in Obsidian. The old per-video queue is still polled.
+  inbox_note: "00 intake/_intake_queue.md"
+  completed_note: "00 intake/_intake_completed.md"
+  legacy_inbox_notes: ["13 video-summaries/_video-queue.md"]
   topic_creation_threshold: 2
   timeout_s: 30
 
@@ -80,11 +82,14 @@ llm:
         model: google/gemini-2.5-flash
       allow_cloud_fallback: true
 
-# The `pdf` kind. Off here; the NAS overlay switches it on when PDF_INPUT_DIR
-# is set. input_dir is the path inside the container.
+# The `pdf` kind. PDFs come from links in the intake queue note or from the
+# /upload page; originals are kept under store_dir. A watched folder is a
+# further, optional source: the NAS overlay sets pdf.input_dir (the path inside
+# the container) when PDF_INPUT_DIR is set in .deploy.env.
 pdf:
-  enabled: false
-  input_dir: /inbox
+  enabled: true
+  store_dir: /data/pdfs
+  max_upload_mb: 100
   notes_dir: "15 PDFs"
   poll_cron: "*/15 * * * *"
   max_pages: 40

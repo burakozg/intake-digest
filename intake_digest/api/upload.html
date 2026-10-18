@@ -1,0 +1,102 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Upload PDFs</title>
+<style>
+  :root { --bg:#fff; --fg:#1b1f24; --muted:#59636e; --line:#d0d7de; --accent:#0969da; --ok:#1a7f37; --bad:#cf222e; --card:#f6f8fa; }
+  @media (prefers-color-scheme: dark) { :root:not([data-theme="light"]) { --bg:#0d1117; --fg:#e6edf3; --muted:#8b949e; --line:#30363d; --accent:#4493f8; --ok:#3fb950; --bad:#f85149; --card:#161b22; } }
+  :root[data-theme="dark"] { --bg:#0d1117; --fg:#e6edf3; --muted:#8b949e; --line:#30363d; --accent:#4493f8; --ok:#3fb950; --bad:#f85149; --card:#161b22; }
+  * { box-sizing: border-box; }
+  body { margin:0; background:var(--bg); color:var(--fg); font:16px/1.5 system-ui, sans-serif; }
+  main { max-width: 40rem; margin: 0 auto; padding: 1.5rem 1rem 3rem; }
+  h1 { font-size: 1.4rem; margin: 0 0 .25rem; }
+  p.sub { color: var(--muted); margin: 0 0 1.25rem; }
+  #drop { border: 2px dashed var(--line); border-radius: 10px; padding: 2rem 1rem; text-align: center; background: var(--card); cursor: pointer; }
+  #drop.over { border-color: var(--accent); }
+  #drop strong { color: var(--accent); }
+  label.key { display:block; margin: 1.25rem 0 .25rem; font-size: .9rem; color: var(--muted); }
+  input[type=password] { width:100%; padding:.5rem .6rem; border:1px solid var(--line); border-radius:6px; background:var(--bg); color:var(--fg); font:inherit; }
+  ul { list-style:none; padding:0; margin:1.25rem 0 0; }
+  li { border:1px solid var(--line); border-radius:8px; padding:.6rem .8rem; margin-bottom:.5rem; background:var(--card); }
+  li .name { font-weight:600; word-break: break-all; }
+  li .state { font-size:.9rem; color:var(--muted); }
+  li.done .state { color:var(--ok); } li.err .state { color:var(--bad); }
+  button { font:inherit; }
+  #pick { display:none; }
+</style>
+</head>
+<body>
+<main>
+  <h1>Upload PDFs</h1>
+  <p class="sub">Each file is summarised and appears as a note in <code>15 PDFs</code> in your vault.</p>
+
+  <label id="drop" for="pick" tabindex="0">
+    <strong>Choose PDFs</strong> or drop them here
+    <input id="pick" type="file" accept="application/pdf,.pdf" multiple>
+  </label>
+
+  <label class="key" for="key">Admin key (kept in this browser only)</label>
+  <input id="key" type="password" autocomplete="off">
+
+  <ul id="files" aria-live="polite"></ul>
+</main>
+<script>
+(() => {
+  const keyInput = document.getElementById('key');
+  const list = document.getElementById('files');
+  const drop = document.getElementById('drop');
+  const pick = document.getElementById('pick');
+  try { keyInput.value = localStorage.getItem('intake-key') || ''; } catch (e) {}
+  keyInput.addEventListener('change', () => { try { localStorage.setItem('intake-key', keyInput.value); } catch (e) {} });
+
+  const add = (file) => {
+    const li = document.createElement('li');
+    li.innerHTML = '<div class="name"></div><div class="state">Uploading…</div>';
+    li.querySelector('.name').textContent = file.name;
+    list.prepend(li);
+    return { set(text, cls) { li.querySelector('.state').textContent = text; li.className = cls || ''; } };
+  };
+
+  const headers = () => ({ 'X-API-Key': keyInput.value });
+
+  async function watch(jobId, row) {
+    for (let i = 0; i < 360; i++) {
+      await new Promise(r => setTimeout(r, 5000));
+      const r = await fetch('jobs/' + jobId, { headers: headers() });
+      if (!r.ok) return row.set('Uploaded; could not read progress (' + r.status + ')', '');
+      const j = await r.json();
+      const stages = j.stages || {};
+      if (j.status === 'failed') return row.set('Failed: ' + (Object.values(j.stage_errors || {})[0] || 'see logs'), 'err');
+      if (j.status === 'done') return row.set('Done → ' + (j.note_path || 'note written'), 'done');
+      const stage = ['transcript', 'summarize', 'write'].find(s => stages[s] !== 'done') || 'write';
+      row.set('Working… (' + ({ transcript: 'reading', summarize: 'summarising', write: 'writing note' }[stage]) + ')', '');
+    }
+    row.set('Still working; check the vault later.', '');
+  }
+
+  async function send(file) {
+    const row = add(file);
+    if (!keyInput.value) return row.set('Enter the admin key first.', 'err');
+    try {
+      const r = await fetch('pdfs?name=' + encodeURIComponent(file.name), {
+        method: 'POST', headers: { ...headers(), 'Content-Type': 'application/pdf' }, body: file,
+      });
+      const body = await r.json().catch(() => ({}));
+      if (!r.ok) return row.set(r.status === 401 ? 'Wrong admin key.' : (body.detail || 'Rejected (' + r.status + ')'), 'err');
+      if (body.status === 'existing') return row.set(body.note_path ? 'Already summarised → ' + body.note_path : 'Already queued', 'done');
+      row.set('Queued', '');
+      if (body.job_id) watch(body.job_id, row);
+    } catch (e) { row.set('Upload failed: ' + e.message, 'err'); }
+  }
+
+  const take = (files) => [...files].forEach(f => /\.pdf$/i.test(f.name) || f.type === 'application/pdf' ? send(f) : add(f).set('Not a PDF.', 'err'));
+  pick.addEventListener('change', () => { take(pick.files); pick.value = ''; });
+  ['dragenter', 'dragover'].forEach(t => drop.addEventListener(t, e => { e.preventDefault(); drop.classList.add('over'); }));
+  ['dragleave', 'drop'].forEach(t => drop.addEventListener(t, e => { e.preventDefault(); drop.classList.remove('over'); }));
+  drop.addEventListener('drop', e => take(e.dataTransfer.files));
+})();
+</script>
+</body>
+</html>

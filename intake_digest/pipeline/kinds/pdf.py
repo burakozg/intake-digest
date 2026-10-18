@@ -43,6 +43,27 @@ def _pages_to_json(pages: list[Page]) -> str:
     return json.dumps([{"page": p.number, "text": p.text} for p in pages])
 
 
+def _file_for(settings: Settings, meta: dict[str, Any]) -> Path:
+    """Where the original is: our own copy for a link or an upload, the watched
+    folder (read in place) otherwise."""
+    if meta.get("stored_path"):
+        return Path(settings.pdf.store_dir) / str(meta["stored_path"])
+    if settings.pdf.input_dir is None:
+        raise FileNotFoundError(f"{meta.get('source_path')}: no watched folder is configured")
+    return Path(settings.pdf.input_dir) / str(meta.get("source_path", ""))
+
+
+def _source_label(meta: dict[str, Any]) -> str:
+    """What the note's `source:` says the original is."""
+    via = meta.get("via", "folder")
+    if via == "link":
+        urls = meta.get("source_urls") or []
+        return str(urls[0]) if urls else str(meta.get("filename", ""))
+    if via == "upload":
+        return f"upload: {meta.get('filename', '')}"
+    return str(meta.get("source_path", ""))
+
+
 def _summary_model(settings: Settings) -> str:
     tier = settings.llm.tiers.get("reduce")
     return tier.primary.model if tier else ""
@@ -70,7 +91,8 @@ async def _write_note(
         path=path,
         digest=digest,
         created=created,
-        source=str(meta.get("source_path", "")),
+        source=_source_label(meta),
+        via=str(meta.get("via", "folder")),
         sha256=str(row["item_key"]),
         pages_read=int(meta.get("pages_read", meta.get("total_pages", 0))),
         total_pages=int(meta.get("total_pages", 0)),
@@ -127,8 +149,8 @@ async def run(
     # ── S2 acquire ───────────────────────────────────────────────────────
     if row["stage_acquire"] != "done":
         set_stage(db, row_id, "acquire", "running")
-        path = Path(settings.pdf.input_dir) / str(meta.get("source_path", ""))
         try:
+            path = _file_for(settings, meta)
             got: Acquired = await acquire(
                 llm,
                 path,

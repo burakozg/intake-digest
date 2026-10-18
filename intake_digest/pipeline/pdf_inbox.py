@@ -33,7 +33,7 @@ from ..utils import iso_now, new_job_id
 
 log = get_logger(__name__)
 
-ADAPTER = "nas"
+ADAPTER = "pdf"
 _HASH_BLOCK = 1 << 20
 
 
@@ -105,13 +105,19 @@ def poll_pdfs(
     today: date | None = None,
     _now: float | None = None,
 ) -> PollResult:
+    if cfg.input_dir is None:
+        raise InputUnavailable("pdf.input_dir is not set")
     root = cfg.input_dir
     files = _find_pdfs(root)
     now_s = _now if _now is not None else time.time()
     now = iso_now()
     result = PollResult()
 
-    rows = db.execute("SELECT * FROM items WHERE kind = 'pdf'").fetchall()
+    # Only this folder's items: links and uploads have no place in it, and
+    # reading their absence as "removed" would be wrong.
+    rows = db.execute(
+        "SELECT * FROM items WHERE kind = 'pdf' AND origin = 'folder'"
+    ).fetchall()
     by_id = {r["id"]: r for r in rows}
     metas = {r["id"]: json.loads(r["metadata"] or "{}") for r in rows}
     all_paths = {p.relative_to(root).as_posix() for p in files}
@@ -186,6 +192,7 @@ def poll_pdfs(
         meta = {
             "title": path.stem,
             "filename": path.name,
+            "via": "folder",
             "source_path": rel,
             "size": stat.st_size,
             "mtime_ns": stat.st_mtime_ns,
@@ -193,7 +200,7 @@ def poll_pdfs(
         db.execute(
             "INSERT INTO items (id, kind, item_key, adapter, origin, url, canonical_url, "
             "metadata, stage_resolve, stage_metadata, created_at, updated_at) "
-            "VALUES (?, 'pdf', ?, ?, 'inbox', ?, ?, ?, 'done', 'done', ?, ?)",
+            "VALUES (?, 'pdf', ?, ?, 'folder', ?, ?, ?, 'done', 'done', ?, ?)",
             (row_id, sha, ADAPTER, rel, rel, json.dumps(meta, sort_keys=True), now, now),
         )
         _queue_job(db, row_id, now)

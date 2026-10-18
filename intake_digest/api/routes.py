@@ -10,13 +10,23 @@ import json
 import re
 import sqlite3
 from datetime import datetime
+from pathlib import Path
 
 from fastapi import APIRouter, Depends, HTTPException, Query, Request, status
+from fastapi.responses import HTMLResponse
 from pydantic import BaseModel, Field
 
 from .. import __version__
 from ..config import Settings
 from ..logging_setup import get_logger
+from ..pipeline.pdf_intake import (
+    LinkRejected,
+    LinkUnavailable,
+    NotAPdf,
+    ingest_link,
+    ingest_pdf,
+    is_pdf_url,
+)
 from ..pipeline.resolve import EnqueueResult, enqueue
 from ..pipeline.runner import RewriteUnavailable, rewrite_from_stored_digest
 from ..pipeline.transcript import probe_asr_worker
@@ -27,6 +37,16 @@ log = get_logger(__name__)
 
 health_router = APIRouter()
 api_router = APIRouter(dependencies=[Depends(require_api_key)])
+
+
+_UPLOAD_PAGE = Path(__file__).with_name("upload.html")
+
+
+@health_router.get("/upload", response_class=HTMLResponse, include_in_schema=False)
+async def upload_page() -> HTMLResponse:
+    """The upload form. Static and carries no data, so it needs no key itself;
+    every call it makes goes through `POST /pdfs` and `GET /jobs/{id}`, which do."""
+    return HTMLResponse(_UPLOAD_PAGE.read_text(encoding="utf-8"))
 
 
 @health_router.get("/healthz")
@@ -125,10 +145,78 @@ class JobResponse(BaseModel):
     existing_note: str | None = None
 
 
+class PdfResult(BaseModel):
+    item_id: str
+    job_id: str | None
+    status: str
+    note_path: str | None = None
+
+
+@api_router.post("/pdfs", status_code=status.HTTP_202_ACCEPTED)
+async def upload_pdf(request: Request, name: str = "document.pdf") -> PdfResult:
+    """Queue an uploaded PDF. The request body is the file itself (the upload
+    page sends it that way, so no multipart parser is needed); `name` is its
+    filename. Anything already summarised comes back `existing` with its note."""
+    settings: Settings = request.app.state.settings
+    db: sqlite3.Connection = request.app.state.db
+    limit = settings.pdf.max_upload_mb * 1024 * 1024
+    declared = request.headers.get("content-length")
+    if declared and declared.isdigit() and int(declared) > limit:
+        raise HTTPException(status.HTTP_413_CONTENT_TOO_LARGE, detail=_too_large(settings))
+    received = bytearray()
+    async for chunk in request.stream():
+        received += chunk
+        if len(received) > limit:
+            raise HTTPException(
+                status.HTTP_413_CONTENT_TOO_LARGE, detail=_too_large(settings)
+            )
+    try:
+        got = ingest_pdf(
+            db, settings.pdf, bytes(received), name=name, via="upload", origin="upload"
+        )
+    except NotAPdf:
+        raise HTTPException(status.HTTP_415_UNSUPPORTED_MEDIA_TYPE, detail="not a PDF") from None
+    return PdfResult(
+        item_id=got.item_id, job_id=got.job_id, status=got.status, note_path=got.note_path
+    )
+
+
+def _too_large(settings: Settings) -> str:
+    return f"larger than {settings.pdf.max_upload_mb} MB"
+
+
 @api_router.post("/jobs", status_code=status.HTTP_202_ACCEPTED)
 async def create_job(body: JobRequest, request: Request) -> JobResponse:
     settings: Settings = request.app.state.settings
     db: sqlite3.Connection = request.app.state.db
+
+    if settings.pdf.enabled and is_pdf_url(body.url):
+        # The iOS Shortcut posts every link here; a PDF link is fetched and
+        # queued like one pasted into the intake note.
+        try:
+            got = await ingest_link(db, settings.pdf, body.url, origin="manual")
+        except LinkRejected as exc:
+            only = JobResult(
+                video_id="unresolved", job_id=None, status="rejected", rejected_reason=str(exc)
+            )
+            return JobResponse(
+                jobs=[only], video_id=only.video_id, status=only.status
+            )
+        except LinkUnavailable as exc:
+            raise HTTPException(status.HTTP_502_BAD_GATEWAY, detail=str(exc)) from exc
+        item = JobResult(
+            video_id=got.item_id.removeprefix("pdf:"),
+            job_id=got.job_id,
+            status=got.status if got.status == "existing" else "created",
+            existing_note=got.note_path,
+        )
+        return JobResponse(
+            jobs=[item],
+            video_id=item.video_id,
+            job_id=item.job_id,
+            status=item.status,
+            existing_note=item.existing_note,
+        )
 
     results = enqueue(
         db,

@@ -69,7 +69,9 @@ def build_scheduler(settings: Settings, db: sqlite3.Connection) -> AsyncIOSchedu
 
     async def _inbox() -> None:
         try:
-            await poll_inbox(db, vault, settings.acquisition, settings.vault)
+            await poll_inbox(
+                db, vault, settings.acquisition, settings.vault, settings.pdf
+            )
         except Exception:
             log.exception("scheduler.inbox_failed")
 
@@ -141,7 +143,7 @@ def build_scheduler(settings: Settings, db: sqlite3.Connection) -> AsyncIOSchedu
         coalesce=True,
         misfire_grace_time=MISFIRE_GRACE_S,
     )
-    if settings.pdf.enabled:
+    if settings.pdf.enabled and settings.pdf.input_dir is not None:
         scheduler.add_job(
             _pdf_poll,
             trigger=CronTrigger.from_crontab(

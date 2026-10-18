@@ -1,10 +1,10 @@
 """Vault inbox watcher (design §4.3).
 
-Polls one note in the notes folder — `vault.inbox_note`, by default
-`13 video-summaries/_video-queue.md` (the `_` prefix pins it to the top of
-the folder in Obsidian's default name sort, above every
-`<YYYY-MM-DD>-<slug>` digest note). Any line carrying a bare video URL that
-is not yet a wikilink is enqueued (`origin='inbox'`). Everything the human
+Polls the intake queue note — `vault.inbox_note`, by default
+`00 intake/_intake_queue.md` (the `_` prefix pins it to the top of the folder
+in Obsidian's default name sort) — and any `legacy_inbox_notes`. Any line
+carrying a bare video or PDF link that is not yet a wikilink is enqueued
+(`origin='inbox'`); a link ending in `.pdf` is fetched and kept as a PDF item. Everything the human
 typed that is not a URL line, or a URL still new/running/failed, is left in
 place untouched.
 
@@ -27,10 +27,11 @@ import json
 import re
 import sqlite3
 
-from ..config import AcquisitionConfig, VaultConfig
+from ..config import AcquisitionConfig, PdfConfig, VaultConfig
 from ..logging_setup import get_logger
 from ..utils import epoch_ms
 from ..vault.livesync import LiveSyncVault, VaultUnavailable
+from .pdf_intake import LinkRejected, LinkUnavailable, ingest_link, is_pdf_url
 from .resolve import enqueue
 
 log = get_logger(__name__)
@@ -52,20 +53,71 @@ async def poll_inbox(
     vault: LiveSyncVault,
     acquisition_cfg: AcquisitionConfig,
     vault_cfg: VaultConfig,
+    pdf_cfg: PdfConfig | None = None,
 ) -> int:
-    """Enqueue new URLs in the inbox note and move finished ones out to the
-    completed note. Returns the number of lines changed. A missing inbox
-    note, or a vault that will not answer, is a no-op (returns 0), not an
-    error. A missing completed note is normal on the first run — it is
-    created the first time something has to move into it.
+    """Enqueue new links in the intake queue notes and move finished ones out
+    to the completed note. Returns the number of lines changed.
+
+    The current queue note is created if missing (somewhere to paste into);
+    the legacy ones are polled if they exist and never recreated. A vault that
+    will not answer is a no-op (returns 0), not an error.
     """
-    queue_path = vault_cfg.inbox_note
+    changed = 0
+    sources = [(vault_cfg.inbox_note, True)] + [
+        (path, False) for path in vault_cfg.legacy_inbox_notes if path != vault_cfg.inbox_note
+    ]
+    for queue_path, create in sources:
+        try:
+            changed += await _poll_queue(
+                db, vault, acquisition_cfg, vault_cfg, pdf_cfg, queue_path, create=create
+            )
+        except VaultUnavailable as exc:
+            log.warning("inbox.vault_unavailable", error=str(exc))
+            return changed
+    return changed
+
+
+async def _resolve_pdf_line(
+    db: sqlite3.Connection, pdf_cfg: PdfConfig, line: str, url: str
+) -> list[tuple[str, str | None]] | None:
+    """A queue line holding a PDF link. Fetches it the first time (and keeps a
+    copy); on later polls the link is known and nothing is fetched. The line
+    leaves the queue only once the summary note exists."""
     try:
-        current = await vault.read_note(queue_path)
-    except VaultUnavailable as exc:
-        log.warning("inbox.vault_unavailable", error=str(exc))
-        return 0
+        got = await ingest_link(db, pdf_cfg, url, origin="inbox")
+    except LinkRejected as exc:
+        log.warning("inbox.pdf_rejected", url=url, reason=str(exc))
+        return None  # stays in the queue, recorded so it is not refetched
+    except LinkUnavailable as exc:
+        log.warning("inbox.pdf_unavailable", url=url, error=str(exc))
+        return None
+    if got.note_path is None:
+        return None
+    row = db.execute(
+        "SELECT created_at, metadata FROM items WHERE id = ?", (got.item_id,)
+    ).fetchone()
+    title = ""
+    with contextlib.suppress(json.JSONDecodeError, TypeError):
+        title = str(json.loads(row["metadata"] or "{}").get("title") or "")
+    link = f"[[{got.note_path}|{title}]]" if title else f"[[{got.note_path}]]"
+    prefix = _PREFIX.match(line)
+    return [((prefix.group(1) if prefix else "") + link, str(row["created_at"])[:10])]
+
+
+async def _poll_queue(
+    db: sqlite3.Connection,
+    vault: LiveSyncVault,
+    acquisition_cfg: AcquisitionConfig,
+    vault_cfg: VaultConfig,
+    pdf_cfg: PdfConfig | None,
+    queue_path: str,
+    *,
+    create: bool,
+) -> int:
+    current = await vault.read_note(queue_path)
     if current is None or not current.strip():
+        if not create:
+            return 0
         # Missing, or left empty by an earlier version: put the note back so
         # there is somewhere to paste into.
         written = await vault.project(
@@ -79,7 +131,17 @@ async def poll_inbox(
     finished: list[tuple[str, str | None]] = []
     changed = 0
     for line in current.splitlines():
-        done = _resolve_line(db, line, acquisition_cfg, vault_cfg)
+        url_match = _URL.search(line)
+        if (
+            pdf_cfg is not None
+            and pdf_cfg.enabled
+            and url_match is not None
+            and not _WIKILINK.search(line)
+            and is_pdf_url(url_match.group(0))
+        ):
+            done = await _resolve_pdf_line(db, pdf_cfg, line, url_match.group(0))
+        else:
+            done = _resolve_line(db, line, acquisition_cfg, vault_cfg)
         if done is None:
             remaining.append(line)
             continue
@@ -111,7 +173,7 @@ async def poll_inbox(
 #: What an otherwise-empty queue note holds. LiveSync/Obsidian treat a 0-byte
 #: note as gone, so the queue always keeps one line of text. It is not a URL,
 #: so the watcher leaves it alone.
-QUEUE_PLACEHOLDER = "Paste video URLs below, one per line."
+QUEUE_PLACEHOLDER = "Paste video or PDF links below, one per line."
 
 _DATE_HEADING = re.compile(r"^##\s+(\d{4}-\d{2}-\d{2})\s*$")
 _OLDER = "Older"

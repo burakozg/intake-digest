@@ -31,6 +31,7 @@ def render_pdf_note(
     extraction: str,
     summary_model: str = "",
     missing_since: str | None = None,
+    via: str = "folder",
 ) -> RenderedNote:
     front = [
         "---",
@@ -54,15 +55,19 @@ def render_pdf_note(
     front.append("---")
 
     body: list[str] = [f"# {digest.title}", ""]
-    where = f"`{source}`"
     plural = "s" if total_pages != 1 else ""
-    if missing_since:
+    if via == "link":
+        body.append(f"Original: <{source}> · {total_pages} page{plural}")
+    elif via == "upload":
+        body.append(f"Original: uploaded file `{source.removeprefix('upload: ')}` · "
+                    f"{total_pages} page{plural}")
+    elif missing_since:
         body.append(
-            f"> The original PDF ({where}) is no longer in the folder "
+            f"> The original PDF (`{source}`) is no longer in the folder "
             f"(found missing {missing_since})."
         )
     else:
-        body.append(f"Original: {where} on the NAS · {total_pages} page{plural}")
+        body.append(f"Original: `{source}` on the NAS · {total_pages} page{plural}")
     if pages_read < total_pages:
         body.append("")
         body.append(

@@ -81,12 +81,18 @@ class VaultConfig(StrictModel):
     #: the top of the folder in Obsidian's default name sort, above every
     #: dated digest note. Empty by default: a line lives here only while it is
     #: new, still running, or failed — see `completed_note`.
-    inbox_note: str = "13 video-summaries/_video-queue.md"
+    inbox_note: str = "00 intake/_intake_queue.md"
+    #: Earlier queue notes, still polled so a link pasted into the old place is
+    #: not silently ignored. Never recreated if missing; finished lines move to
+    #: `completed_note` like any other.
+    legacy_inbox_notes: list[str] = Field(
+        default_factory=lambda: ["13 video-summaries/_video-queue.md"]
+    )
     #: Where a line goes once its note exists. A separate note rather than
     #: rewriting in place, so the queue actually empties instead of
     #: accumulating every video ever finished — the inbox note was 40 lines
     #: deep and 29 of them were done before this existed.
-    completed_note: str = "13 video-summaries/_video-completed.md"
+    completed_note: str = "00 intake/_intake_completed.md"
     #: Videos a topic must appear in before a new topic page is created.
     #: Reuses clippings-topics' matcher and threshold logic (canonical()).
     topic_creation_threshold: int = Field(default=2, ge=1, le=100)
@@ -228,17 +234,25 @@ class LLMConfig(StrictModel):
 
 
 class PdfConfig(StrictModel):
-    """The `pdf` kind: PDFs dropped in a NAS folder become notes in the vault.
+    """The `pdf` kind: a PDF becomes a summary note in the vault.
 
-    Off by default, so an existing deployment that mounts no folder is
-    unchanged. The folder is read-only to the app — the original never moves
-    or changes; the note refers to it by its path relative to `input_dir`.
+    PDFs arrive three ways, all ending in the same pipeline: a link pasted in
+    the intake queue note, a file uploaded on the `/upload` page, and — optional,
+    off unless `input_dir` is set — a NAS folder watched for new files. Links
+    and uploads are kept in `store_dir`; a watched folder is read in place,
+    read-only, and its originals never move or change.
     """
 
-    enabled: bool = False
-    #: Inside the container; the host path is a deployment parameter
-    #: (`PDF_INPUT_DIR` in `.deploy.env`), mounted read-only.
-    input_dir: Path = Path("/inbox")
+    enabled: bool = True
+    #: Where fetched and uploaded originals are kept (inside the app's data
+    #: volume), named by content hash.
+    store_dir: Path = Path("/data/pdfs")
+    max_upload_mb: int = Field(default=100, ge=1, le=2048)
+    download_timeout_s: int = Field(default=60, ge=5, le=600)
+    #: Set to watch a folder (inside the container; the host path is a
+    #: deployment parameter, `PDF_INPUT_DIR` in `.deploy.env`, mounted
+    #: read-only). None leaves folder watching off.
+    input_dir: Path | None = None
     notes_dir: str = "15 PDFs"
     poll_cron: str = "*/15 * * * *"
     #: A file touched more recently than this is still being copied in.
