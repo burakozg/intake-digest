@@ -79,7 +79,7 @@ async def test_url_with_a_finished_note_moves_to_completed(tmp_path: Path) -> No
     assert queue.endswith("\n")  # trailing newline preserved
 
     completed = vault.written(COMPLETED)
-    assert f"- [[{NOTE}|Great Talk]]" in completed
+    assert f"- 🎬 [[{NOTE}|Great Talk]]" in completed
 
 
 @pytest.mark.asyncio
@@ -286,8 +286,8 @@ async def test_playlist_line_expands_to_one_bullet_per_note_in_completed(
     assert changed == 1
     assert vault.written(INBOX) == QUEUE_PLACEHOLDER + "\n"
     completed = vault.written(COMPLETED)
-    assert "- [[13 video-summaries/aaa.md|Vid 0]]" in completed
-    assert "- [[13 video-summaries/bbb.md|Vid 1]]" in completed
+    assert "- 🎬 [[13 video-summaries/aaa.md|Vid 0]]" in completed
+    assert "- 🎬 [[13 video-summaries/bbb.md|Vid 1]]" in completed
 
 
 @pytest.mark.asyncio
@@ -299,7 +299,7 @@ async def test_indentation_and_bullet_style_are_preserved(tmp_path: Path) -> Non
 
     await poll_inbox(db, vault, acq, vcfg)  # type: ignore[arg-type]
 
-    assert "\n  * [[" in vault.written(COMPLETED)
+    assert "\n  * 🎬 [[" in vault.written(COMPLETED)
 
 
 def _seed_upload(db: Any, *, note_path: str | None = "15 PDFs/a.md") -> None:
@@ -377,3 +377,28 @@ async def test_a_legacy_completed_note_is_folded_in_then_pointed_at_the_new_one(
     await poll_inbox(db, vault, AcquisitionConfig(), vcfg)  # type: ignore[arg-type]
     assert vault.written(new) == before
     assert not vault.writes
+
+
+@pytest.mark.asyncio
+async def test_completed_lines_are_marked_by_kind_and_old_ones_are_relabelled(
+    tmp_path: Path,
+) -> None:
+    db = connect(tmp_path / "s.sqlite")
+    acq, vcfg = _cfg()
+    vault = FakeVault(
+        {
+            INBOX: "x\n",
+            COMPLETED: "## 2026-10-15\n[[13 video-summaries/v.md|V]]\n- [[15 PDFs/p.md|P]]\n"
+            "🎬 [[13 video-summaries/w.md|W]]\n[[other/x.md|X]]\n",
+        }
+    )
+
+    await poll_inbox(db, vault, acq, vcfg)  # type: ignore[arg-type]
+
+    assert vault.written(COMPLETED) == (
+        "## 2026-10-15\n🎬 [[13 video-summaries/v.md|V]]\n- 📄 [[15 PDFs/p.md|P]]\n"
+        "🎬 [[13 video-summaries/w.md|W]]\n[[other/x.md|X]]\n"
+    )
+    vault.writes.clear()
+    await poll_inbox(db, vault, acq, vcfg)  # type: ignore[arg-type]
+    assert not vault.writes  # settled: nothing rewritten on the next poll

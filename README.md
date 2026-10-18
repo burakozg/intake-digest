@@ -30,7 +30,7 @@ is down to a single placeholder line the rest of the time (a 0-byte note
 vanishes in LiveSync, so it is never left empty; a lost one is recreated).
 The completed note is grouped by the day each item was requested, newest
 first, with `## Older` for entries the database cannot date. Uploaded PDFs
-never pass through the queue, so the poll adds them here too (once each). The
+never pass through the queue, so the poll adds them here too (once each). Each line starts with 🎬 (video) or 📄 (PDF). The
 old `13 video-summaries/_video-completed.md` is folded into this note on the
 first poll after the upgrade and left as a one-line pointer.
 `GET /jobs/{id}` reports stage progress, `POST /videos/{id}/rewrite`

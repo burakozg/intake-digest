@@ -134,6 +134,12 @@ async def _sync_completed(
         finished.append((link, str(row["created_at"])[:10]))
 
     if not folded and not finished:
+        marked = _mark_kinds(existing)
+        if existing.strip() and marked != existing:
+            await vault.project(
+                vault_cfg.completed_note, marked, mtime_ms=epoch_ms(), merge=False
+            )
+            log.info("inbox.completed_marked", completed=vault_cfg.completed_note)
         return 0
     await vault.project(
         vault_cfg.completed_note,
@@ -258,6 +264,26 @@ QUEUE_PLACEHOLDER = "Paste video or PDF links below, one per line."
 
 _DATE_HEADING = re.compile(r"^##\s+(\d{4}-\d{2}-\d{2})\s*$")
 _OLDER = "Older"
+#: What a completed-note line is, told by the folder its note lives in. Added
+#: to every line (also the ones written before this existed) so the note reads
+#: at a glance; a line already starting with one of these is left alone.
+_KIND_MARKS = (("[[13 video-summaries/", "🎬"), ("[[15 PDFs/", "📄"))
+_MARKED = re.compile(r"^\s*(?:[-*]\s+)?(?:🎬|📄)")
+
+
+def _mark_kinds(text: str) -> str:
+    out: list[str] = []
+    for line in text.split("\n"):
+        if not _MARKED.match(line):
+            prefix = _PREFIX.match(line)
+            head = prefix.group(1) if prefix else ""
+            rest = line[len(head) :]
+            for opener, mark in _KIND_MARKS:
+                if rest.startswith(opener):
+                    line = f"{head}{mark} {rest}"
+                    break
+        out.append(line)
+    return "\n".join(out)
 _NOTE_PATH = re.compile(r"\[\[([^\]|]+)")
 
 
@@ -302,7 +328,7 @@ def _group_completed(
     parts = [f"## {d}\n" + "\n".join(sections[d]) for d in days]
     if _OLDER in sections:
         parts.append(f"## {_OLDER}\n" + "\n".join(sections[_OLDER]))
-    return "\n\n".join(parts) + "\n"
+    return _mark_kinds("\n\n".join(parts) + "\n")
 
 
 def _request_day(db: sqlite3.Connection, video_id: str) -> str | None:
