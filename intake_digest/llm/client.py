@@ -24,9 +24,11 @@ Cloud endpoints are dropped from the chain entirely when a tier sets
 
 from __future__ import annotations
 
+import base64
 import json
 import sqlite3
 import time
+from collections.abc import Sequence
 from typing import Any, Final, TypeVar, cast
 
 import instructor
@@ -224,15 +226,33 @@ class LLMClient:
         *,
         video_id: str | None = None,
         prompt_version: str = "",
+        images: Sequence[bytes] | None = None,
     ) -> tuple[T, CallMeta]:
         chain = self._chains.get(tier)
         if not chain:
             raise LLMUnavailable(f"no endpoints configured for tier {tier!r}")
 
         tier_cfg = self._settings.llm.tiers[tier]
+        user_content: Any = user
+        if images:
+            # OpenAI-style multimodal content, which litellm translates per
+            # provider. The text goes first so the instruction frames the
+            # images. The bytes are never logged (see `log_io` below).
+            user_content = [
+                {"type": "text", "text": user},
+                *(
+                    {
+                        "type": "image_url",
+                        "image_url": {
+                            "url": "data:image/png;base64," + base64.b64encode(i).decode()
+                        },
+                    }
+                    for i in images
+                ),
+            ]
         messages = [
             {"role": "system", "content": system},
-            {"role": "user", "content": user},
+            {"role": "user", "content": user_content},
         ]
         if self._log_io:
             log.debug("llm.request", tier=tier, video_id=video_id, prompt=f"{system}\n\n{user}")

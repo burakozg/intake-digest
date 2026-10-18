@@ -50,6 +50,35 @@ class VideoDigest(BaseModel):
     relevance: Literal["critical", "high", "medium", "low"]
 
 
+class PdfSection(BaseModel):
+    heading: str = Field(max_length=120)
+    summary: str
+
+
+class PdfDigest(BaseModel):
+    """The reduce output for a PDF. Like `VideoDigest` minus the timestamps,
+    plus the document's own structure (`sections`) and a `title` — a PDF's
+    filename is rarely the title a reader would file it under."""
+
+    title: str = Field(max_length=200)
+    tldr: str
+    summary_md: str
+    key_points: list[str] = Field(min_length=1, max_length=12)
+    sections: list[PdfSection] = Field(default_factory=list, max_length=14)
+    entities: list[str] = Field(default_factory=list)
+    topics: list[Annotated[str, Field(max_length=40)]] = Field(
+        default_factory=list, max_length=6
+    )
+    claims_to_verify: list[str] = Field(default_factory=list)
+    relevance: Literal["critical", "high", "medium", "low"]
+
+
+class PageText(BaseModel):
+    """A vision model's reading of scanned pages, one entry per page sent."""
+
+    pages: list[str]
+
+
 @dataclass(slots=True)
 class CallMeta:
     """Telemetry for one structured LLM invocation. Ported from

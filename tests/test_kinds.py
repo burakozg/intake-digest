@@ -66,7 +66,7 @@ def _seed(db: sqlite3.Connection, key: str, kind: str, *, written: bool = False)
 
 
 def test_video_is_registered_and_unknown_kinds_are_an_error() -> None:
-    assert "video" in kind_names()
+    assert {"video", "pdf"} <= set(kind_names())
     assert get_kind("video").name == "video"
     with pytest.raises(KeyError, match="unknown item kind"):
         get_kind("nope")
@@ -115,10 +115,10 @@ async def test_no_kind_filter_takes_every_kind(tmp_path: Path) -> None:
 @pytest.mark.asyncio
 async def test_run_job_with_an_unregistered_kind_fails_loudly(tmp_path: Path) -> None:
     db = connect(tmp_path / "s.sqlite")
-    row_id = _seed(db, "a", "pdf")  # no pdf kind is registered yet
+    row_id = _seed(db, "a", "nope")  # a kind nothing registered
     row = db.execute("SELECT * FROM items WHERE id = ?", (row_id,)).fetchone()
 
-    with pytest.raises(KeyError, match="unknown item kind 'pdf'"):
+    with pytest.raises(KeyError, match="unknown item kind 'nope'"):
         await run_job(db, _settings(tmp_path), row, llm=object(), vault=object())  # type: ignore[arg-type]
 
 

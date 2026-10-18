@@ -7,7 +7,7 @@ looks like and what its note says — and that lives behind `Kind`. Adding an
 input type means adding one module here and registering it below; nothing in
 the runner or the scheduler changes.
 
-`video` is the only kind registered at present.
+`video` and `pdf` are registered.
 """
 
 from __future__ import annotations
@@ -46,9 +46,10 @@ class Kind(Protocol):
 def _registry() -> dict[str, Kind]:
     # Imported here, not at module top: each kind imports this package for
     # `RewriteUnavailable`, so a top-level import would be circular.
+    from .pdf import PdfKind
     from .video import VideoKind
 
-    return {k.name: k for k in (VideoKind(),)}
+    return {k.name: k for k in (VideoKind(), PdfKind())}
 
 
 _KINDS: dict[str, Kind] | None = None

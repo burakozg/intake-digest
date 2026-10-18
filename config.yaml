@@ -72,6 +72,22 @@ llm:
         - provider: openrouter
           model: google/gemini-2.5-flash
       allow_cloud_fallback: true
+    # Reads scanned PDF pages (images) into text. Only called for pages with no
+    # text layer; unused by videos. Must be a vision-capable model.
+    vision:
+      primary:
+        provider: openrouter
+        model: google/gemini-2.5-flash
+      allow_cloud_fallback: true
+
+# The `pdf` kind. Off here; the NAS overlay switches it on when PDF_INPUT_DIR
+# is set. input_dir is the path inside the container.
+pdf:
+  enabled: false
+  input_dir: /inbox
+  notes_dir: "15 PDFs"
+  poll_cron: "*/15 * * * *"
+  max_pages: 40
 
 # Parsed and validated, deliberately unused in v1 — see plan §Part 3 / M1.
 watchlist: []

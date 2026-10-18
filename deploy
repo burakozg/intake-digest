@@ -38,8 +38,19 @@ ASR_MODEL="${ASR_MODEL:?Set ASR_MODEL in .deploy.env — the model loaded in ~/p
 #   docker network ls | grep qnet
 QNET="${QNET:-qnet-static-eth1-000000}"
 
+# Optional: a NAS folder of PDFs to summarise (the `pdf` kind), mounted
+# read-only at /inbox. Empty leaves the kind off and mounts nothing.
+PDF_INPUT_DIR="${PDF_INPUT_DIR:-}"
+
 do_render() {
+  local pdf_rule
+  if [ -n "${PDF_INPUT_DIR}" ]; then
+    pdf_rule="s#PDF_INPUT_DIR_PLACEHOLDER#${PDF_INPUT_DIR}#; s#  \# pdf-input\$##"
+  else
+    pdf_rule='/# pdf-input$/d'
+  fi
   nas_render "$NAS_COMPOSE" "$RENDERED" \
+    "${pdf_rule}" \
     "s#APP_LAN_IP_PLACEHOLDER#${APP_LAN_IP}#" \
     "s#APP_MAC_PLACEHOLDER#$(nas_mac_for_ip "${APP_LAN_IP}")#" \
     "s#QNET_PLACEHOLDER#${QNET}#"

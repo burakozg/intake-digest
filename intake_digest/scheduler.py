@@ -22,6 +22,7 @@ from .pipeline.asr_drain import alert_on_stale_pending_asr, drain_pending_asr
 from .pipeline.cleanup import sweep_orphaned_media
 from .pipeline.inbox import poll_inbox
 from .pipeline.kinds import kind_names
+from .pipeline.pdf_inbox import InputUnavailable, poll_pdfs
 from .pipeline.runner import run_due_jobs
 
 log = get_logger(__name__)
@@ -71,6 +72,22 @@ def build_scheduler(settings: Settings, db: sqlite3.Connection) -> AsyncIOSchedu
             await poll_inbox(db, vault, settings.acquisition, settings.vault)
         except Exception:
             log.exception("scheduler.inbox_failed")
+
+    async def _pdf_poll() -> None:
+        try:
+            result = poll_pdfs(db, settings.pdf)
+            if result.new or result.missing or result.restored:
+                log.info(
+                    "pdf.poll",
+                    new=len(result.new),
+                    missing=len(result.missing),
+                    restored=len(result.restored),
+                )
+        except InputUnavailable as exc:
+            # Typically the share is not mounted. Nothing is marked missing.
+            log.warning("pdf.input_unavailable", error=str(exc))
+        except Exception:
+            log.exception("scheduler.pdf_poll_failed")
 
     async def _stale_check() -> None:
         try:
@@ -124,6 +141,17 @@ def build_scheduler(settings: Settings, db: sqlite3.Connection) -> AsyncIOSchedu
         coalesce=True,
         misfire_grace_time=MISFIRE_GRACE_S,
     )
+    if settings.pdf.enabled:
+        scheduler.add_job(
+            _pdf_poll,
+            trigger=CronTrigger.from_crontab(
+                settings.pdf.poll_cron, timezone=settings.scheduler.timezone
+            ),
+            id="pdf_poll",
+            max_instances=1,
+            coalesce=True,
+            misfire_grace_time=MISFIRE_GRACE_S,
+        )
     # Same cadence as the drain job — no point checking staleness more often
     # than the queue itself is worked.
     scheduler.add_job(

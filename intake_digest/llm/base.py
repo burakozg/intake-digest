@@ -8,6 +8,7 @@ contained to one module.
 
 from __future__ import annotations
 
+from collections.abc import Sequence
 from typing import Protocol, TypeVar
 
 from pydantic import BaseModel
@@ -38,8 +39,11 @@ class StructuredLLM(Protocol):
         *,
         video_id: str | None = None,
         prompt_version: str = "",
+        images: Sequence[bytes] | None = None,
     ) -> tuple[T, CallMeta]:
-        """Return a validated `response_model` instance plus call telemetry.
+        """Return a validated `response_model` instance plus call telemetry. `images` are PNG
+        bytes sent with `user` to a vision-capable endpoint (the `pdf` kind's
+        scanned pages).
 
         Raises `LLMUnavailable` when the tier's whole chain is exhausted.
         """

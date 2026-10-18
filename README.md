@@ -132,6 +132,31 @@ deployment topology (the vault's CouchDB address, the ASR worker's address)
 are environment-only: copy `.env.example` to `.env` for local runs, and
 `deploy.env.example` to `.deploy.env` for `./deploy`. Neither is tracked.
 
+## PDFs
+
+Drop PDFs in a NAS folder and each becomes a note in `15 PDFs/`: a detailed
+summary (TL;DR, prose, key points, the document's sections), with the original
+left where it is and referred to by its path relative to the folder. Topic
+links come later, from `clippings-topics`, which reads these notes
+(`CLIP_EXTRA_PREFIXES="15 PDFs/"`); this app never writes `99 topics/` for
+PDFs.
+
+- **Turn it on:** set `PDF_INPUT_DIR` (a NAS host path) in `.deploy.env`. It is
+  mounted read-only at `/inbox`; unset, nothing is mounted and the kind stays
+  off. `./deploy` never creates the folder, and the deploy account must be
+  able to read it.
+- **Identity** is the SHA-256 of the file, so renaming or moving a PDF is not a
+  new document and the same file in two folders is one note. A PDF edited in
+  place is a new document; the old note stays.
+- **Scans:** pages with no text layer are rendered and read by the `vision`
+  tier (`llm.tiers.vision`); without that tier a scanned PDF fails with a
+  message saying so. Only the first `pdf.max_pages` (40) pages are read, and the
+  note says when it covers less than the whole.
+- **Removal** never deletes anything: a PDF that leaves the folder gets
+  `pdf_missing_since` in its note's frontmatter, once. An empty or unmounted
+  share is not read as "everything was deleted".
+- `GET /items?kind=pdf` is the export; `GET /videos` never includes PDFs.
+
 ## Renamed from video-digest
 
 What changed and what deliberately did not:

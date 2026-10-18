@@ -44,6 +44,11 @@ services:
 
     volumes:
       - /share/Container/intake-digest/data:/data
+      # The PDF folder, read-only. Lines tagged `# pdf-input` are kept (marker
+      # stripped) when PDF_INPUT_DIR is set in .deploy.env and deleted when it
+      # is not, so an unset path never reaches Docker — which would otherwise
+      # create it on the NAS, root-owned.
+      - PDF_INPUT_DIR_PLACEHOLDER:/inbox:ro  # pdf-input
 
     environment:
       TZ: Europe/Stockholm
@@ -53,6 +58,7 @@ services:
       # config.yaml (config.py precedence), so the tracked file keeps its
       # harmless default.
       INTAKE_VAULT__USER: admin
+      INTAKE_PDF__ENABLED: "true"  # pdf-input
 
     networks:
       QNET_PLACEHOLDER:

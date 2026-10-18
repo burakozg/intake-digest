@@ -224,6 +224,55 @@ class LLMConfig(StrictModel):
         return self
 
 
+# ── pdf kind ──────────────────────────────────────────────────────────────────
+
+
+class PdfConfig(StrictModel):
+    """The `pdf` kind: PDFs dropped in a NAS folder become notes in the vault.
+
+    Off by default, so an existing deployment that mounts no folder is
+    unchanged. The folder is read-only to the app — the original never moves
+    or changes; the note refers to it by its path relative to `input_dir`.
+    """
+
+    enabled: bool = False
+    #: Inside the container; the host path is a deployment parameter
+    #: (`PDF_INPUT_DIR` in `.deploy.env`), mounted read-only.
+    input_dir: Path = Path("/inbox")
+    notes_dir: str = "15 PDFs"
+    poll_cron: str = "*/15 * * * *"
+    #: A file touched more recently than this is still being copied in.
+    settle_seconds: int = Field(default=60, ge=0, le=3600)
+    #: Pages read per PDF; the rest are left out and the note says so. Bounds
+    #: the cost of a huge scan sent page by page to a vision model.
+    max_pages: int = Field(default=40, ge=1, le=2000)
+    #: A page with fewer extracted characters than this is treated as a scan
+    #: and read by the vision tier instead.
+    min_chars_per_page: int = Field(default=40, ge=0, le=5000)
+    #: Pages per vision call. Each is an image, so this bounds request size.
+    vision_pages_per_call: int = Field(default=4, ge=1, le=16)
+    render_dpi: int = Field(default=144, ge=72, le=300)
+
+    @field_validator("notes_dir")
+    @classmethod
+    def _clean_folder(cls, value: str) -> str:
+        cleaned = value.strip("/")
+        if not cleaned or "//" in cleaned:
+            raise ValueError("a vault folder cannot be empty, '/', or contain '//'")
+        return cleaned
+
+    @field_validator("poll_cron")
+    @classmethod
+    def _cron_parses(cls, value: str) -> str:
+        from apscheduler.triggers.cron import CronTrigger
+
+        try:
+            CronTrigger.from_crontab(value)
+        except Exception as exc:
+            raise ValueError(f"invalid cron expression {value!r} ({exc})") from exc
+        return value
+
+
 # ── watchlist (§4 — parsed and validated, deliberately unused in v1) ─────────
 
 
@@ -362,6 +411,7 @@ class Settings(BaseSettings):
     )
 
     vault: VaultConfig = Field(default_factory=VaultConfig)
+    pdf: PdfConfig = Field(default_factory=PdfConfig)
     acquisition: AcquisitionConfig = Field(default_factory=AcquisitionConfig)
     transcription: TranscriptionConfig
     llm: LLMConfig
