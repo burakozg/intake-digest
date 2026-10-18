@@ -131,7 +131,7 @@ async def _sync_completed(
         with contextlib.suppress(json.JSONDecodeError, TypeError):
             title = str(json.loads(row["metadata"] or "{}").get("title") or "")
         link = f"[[{row['note_path']}|{title}]]" if title else f"[[{row['note_path']}]]"
-        finished.append((f"- {link}", str(row["created_at"])[:10]))
+        finished.append((link, str(row["created_at"])[:10]))
 
     if not folded and not finished:
         return 0

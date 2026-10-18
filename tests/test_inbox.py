@@ -324,7 +324,7 @@ async def test_an_uploaded_pdf_is_logged_in_completed_once(tmp_path: Path) -> No
     completed = vault.written(COMPLETED)
     assert completed is not None
     assert "## 2026-10-18" in completed
-    assert "- [[15 PDFs/a.md|A Paper]]" in completed
+    assert "[[15 PDFs/a.md|A Paper]]" in completed
 
     # Logged once: deleting the line by hand is respected on later polls.
     vault.writes.clear()
