@@ -1,8 +1,8 @@
 """canonical()/slugify() parity against podcast-digest's originals.
 
-Three applications (podcast-digest, clippings-topics, video-digest) now write
+Three applications (podcast-digest, clippings-topics, intake-digest) now write
 `99 topics/` and agree on identity only by applying the same two functions to
-a name — they do not talk to each other (see video_digest/sanitize.py's
+a name — they do not talk to each other (see intake_digest/sanitize.py's
 header). This file pins the exact outputs of `podcast_agent.entities.canonical`
 and `podcast_agent.sanitize.slugify` at the commit this was ported from
 (fac8a1f), captured by actually running them, not by re-deriving the rule —
@@ -14,7 +14,7 @@ from __future__ import annotations
 
 import pytest
 
-from video_digest.sanitize import canonical, slugify
+from intake_digest.sanitize import canonical, slugify
 
 #: (input, expected canonical(), expected slugify())
 CASES: list[tuple[str, str, str]] = [

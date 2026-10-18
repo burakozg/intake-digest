@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import pytest
 
-from video_digest.sources.youtube import ResolvedURL, canonical_url, resolve_url
+from intake_digest.sources.youtube import ResolvedURL, canonical_url, resolve_url
 
 VID = "dQw4w9WgXcQ"
 

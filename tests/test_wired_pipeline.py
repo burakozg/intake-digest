@@ -2,10 +2,10 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from video_digest.config import AcquisitionConfig
-from video_digest.db import connect
-from video_digest.pipeline.resolve import enqueue, metadata_from_row
-from video_digest.sources import wired
+from intake_digest.config import AcquisitionConfig
+from intake_digest.db import connect
+from intake_digest.pipeline.resolve import enqueue, metadata_from_row
+from intake_digest.sources import wired
 
 SLUG = "how-ai-leaders-are-actually-rewiring-business"
 PAGE = (Path(__file__).parent / "fixtures" / "wired_page.html").read_text()

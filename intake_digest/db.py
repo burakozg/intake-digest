@@ -103,7 +103,7 @@ CREATE TABLE IF NOT EXISTS note_names (
 );
 
 -- Same pinning rule, for topic pages this app creates in 99 topics/. Keyed by
--- canonical() (video_digest/sanitize.py, ported verbatim from podcast-digest),
+-- canonical() (intake_digest/sanitize.py, ported verbatim from podcast-digest),
 -- the same key podcast-digest and clippings-topics already use, so the three
 -- writers agree on identity without talking to each other.
 CREATE TABLE IF NOT EXISTS topic_note_names (

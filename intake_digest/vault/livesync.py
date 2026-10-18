@@ -16,7 +16,7 @@ what is already in a folder rather than being told.
 Two plugin settings must stay off, and both break this silently: `encrypt`
 (E2EE) and `usePathObfuscation`. This writes plaintext chunks keyed by path.
 
-Uses `video_digest.config.VaultConfig` directly rather than redeclaring a
+Uses `intake_digest.config.VaultConfig` directly rather than redeclaring a
 narrower dataclass — the four attributes this reads (`couchdb_url`, `db`,
 `user`, `timeout_s`) already exist there, alongside the vault-folder settings
 nothing else here needs.

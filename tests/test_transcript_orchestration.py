@@ -9,9 +9,9 @@ from pathlib import Path
 
 import pytest
 
-from video_digest.config import AcquisitionConfig, OutputConfig, TranscriptionConfig
-from video_digest.db import connect
-from video_digest.pipeline.transcript import (
+from intake_digest.config import AcquisitionConfig, OutputConfig, TranscriptionConfig
+from intake_digest.db import connect
+from intake_digest.pipeline.transcript import (
     ParkedForASR,
     acquire_transcript,
     clear_pending_asr,
@@ -19,10 +19,10 @@ from video_digest.pipeline.transcript import (
     pending_asr_rows,
     stale_pending_asr,
 )
-from video_digest.sources.youtube import VideoMetadata
-from video_digest.transcripts.asr import ASRResult, ASRUnavailable
-from video_digest.transcripts.ladder import AcquiredTranscript, NeedsASR
-from video_digest.transcripts.normalize import Paragraph, Transcript
+from intake_digest.sources.youtube import VideoMetadata
+from intake_digest.transcripts.asr import ASRResult, ASRUnavailable
+from intake_digest.transcripts.ladder import AcquiredTranscript, NeedsASR
+from intake_digest.transcripts.normalize import Paragraph, Transcript
 
 VID = "dQw4w9WgXcQ"
 ROW_ID = f"youtube:{VID}"

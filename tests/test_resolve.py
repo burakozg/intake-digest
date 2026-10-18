@@ -4,10 +4,10 @@ from pathlib import Path
 
 import pytest
 
-from video_digest.config import AcquisitionConfig
-from video_digest.db import connect
-from video_digest.pipeline.resolve import enqueue
-from video_digest.sources.youtube import VideoMetadata, VideoRejected
+from intake_digest.config import AcquisitionConfig
+from intake_digest.db import connect
+from intake_digest.pipeline.resolve import enqueue
+from intake_digest.sources.youtube import VideoMetadata, VideoRejected
 
 VID = "dQw4w9WgXcQ"
 URL = f"https://www.youtube.com/watch?v={VID}"

@@ -1,4 +1,11 @@
-# video-digest
+# intake-digest
+
+*Formerly `video-digest`.* A queue of **items**, each of a **kind** — `video`
+today, `pdf` next — that is acquired, summarised and written to the vault as
+a note. What is the same for every kind (the job queue, stage checkpoints,
+the runner, the LLM client, the vault writer) lives once; what differs is one
+module in `intake_digest/pipeline/kinds/`. The rest of this README describes
+the `video` kind, which is the only one so far.
 
 Takes a video URL (YouTube, and wired.com/video/watch pages), gets the best available transcript,
 produces a structured summary, and writes an Obsidian note with deep links
@@ -31,13 +38,13 @@ It is the **sixth** application writing to this vault, after `taster`,
 `vault-ask`. The rules for doing that without eating another writer's work are
 in `~/.claude/skills/obsidian-vault-writer`, and this follows them: whole-file
 ownership with a pinned filename for `13 video-summaries/` and
-`14 video-transcripts/`, section ownership (`<!-- begin:video-digest -->`,
+`14 video-transcripts/`, section ownership (`<!-- begin:intake-digest -->`,
 `video_` frontmatter prefix) only in the shared `99 topics/`.
 
 ```sh
 ./deploy                 # build, ship, bring it up on the NAS
 ./deploy check            # what's running, and reachable over the LAN
-uv run python -m video_digest   # run locally, against ./config.yaml + .env
+uv run python -m intake_digest   # run locally, against ./config.yaml + .env
 uv run pytest
 ```
 
@@ -124,6 +131,30 @@ comment there for the two YAML traps this has to avoid). Secrets and
 deployment topology (the vault's CouchDB address, the ASR worker's address)
 are environment-only: copy `.env.example` to `.env` for local runs, and
 `deploy.env.example` to `.deploy.env` for `./deploy`. Neither is tracked.
+
+## Renamed from video-digest
+
+What changed and what deliberately did not:
+
+- **Env vars** are `INTAKE_*` now. The old `VIDEODIGEST_*` names are still
+  read (a deprecation warning names each one), and `./deploy` still accepts
+  them in the local `.env`; the NAS always receives the new names. The
+  fallback is a one-release courtesy: drop it once nothing sets the old ones.
+- **Unchanged on purpose:** the SQLite file is still `video_digest.sqlite`
+  (so an existing `data/` opens as is), the vault owner tag is still
+  `<!-- begin:video-digest -->` and the transcript note's `type:` is still
+  `video-digest` (both live inside notes already in the vault), and
+  `GET /videos` keeps its shape and only ever returns videos. `GET /items`
+  is the kind-neutral export.
+- **One-time NAS cutover** (the compose project name changed, so `up` will
+  not adopt the old container, and both want the same macvlan IP):
+  1. snapshot the database (`nas_sqlite_get`, never `ssh cat`);
+  2. stop and remove the old project from its old directory
+     (`docker compose -p video-digest down`);
+  3. `mv /share/Container/video-digest /share/Container/intake-digest`;
+  4. `./deploy`, then check `/healthz` from the Mac over the LAN;
+  5. update podcast-digest's `PODAGENT_VIDEO_DIGEST_API_KEY` only if the
+     admin key value itself changed — the URL and key are the same.
 
 ## The ASR worker
 

@@ -1,6 +1,6 @@
 """The LLM boundary the rest of the application sees.
 
-Ported from `podcast_agent/llm/base.py`. Only `video_digest/llm/` may import
+Ported from `podcast_agent/llm/base.py`. Only `intake_digest/llm/` may import
 litellm or instructor — pipeline stages depend on `StructuredLLM`, which
 makes them trivially testable against a fake and keeps provider churn
 contained to one module.

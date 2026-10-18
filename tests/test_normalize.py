@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from video_digest.transcripts.normalize import (
+from intake_digest.transcripts.normalize import (
     Paragraph,
     _dedupe_rolling,
     build_transcript,

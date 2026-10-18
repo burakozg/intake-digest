@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import pytest
 
-from video_digest.sources.youtube import VideoRejected, parse_info
+from intake_digest.sources.youtube import VideoRejected, parse_info
 
 VID = "dQw4w9WgXcQ"
 

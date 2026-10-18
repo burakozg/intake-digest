@@ -12,7 +12,7 @@ unprefixed keys and another writer's prefixed ones.
 
 from __future__ import annotations
 
-from video_digest.vault import notes
+from intake_digest.vault import notes
 
 EXISTING = """\
 ---

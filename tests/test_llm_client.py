@@ -23,10 +23,10 @@ import pytest
 from instructor.core import InstructorRetryException
 from pydantic import BaseModel, Field, ValidationError
 
-from video_digest.config import Settings
-from video_digest.db import connect
-from video_digest.llm.base import LLMUnavailable
-from video_digest.llm.client import ENDPOINT_COOLDOWN_S, LLMClient, _root_cause
+from intake_digest.config import Settings
+from intake_digest.db import connect
+from intake_digest.llm.base import LLMUnavailable
+from intake_digest.llm.client import ENDPOINT_COOLDOWN_S, LLMClient, _root_cause
 
 
 class _Result(BaseModel):

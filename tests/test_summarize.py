@@ -5,10 +5,10 @@ from typing import Any, TypeVar
 import pytest
 from pydantic import BaseModel
 
-from video_digest.llm.models import CallMeta, ChunkSummary, VideoDigest
-from video_digest.pipeline.summarize import chunk_transcript, summarize_video
-from video_digest.sources.youtube import VideoMetadata
-from video_digest.transcripts.normalize import Paragraph, Transcript
+from intake_digest.llm.models import CallMeta, ChunkSummary, VideoDigest
+from intake_digest.pipeline.summarize import chunk_transcript, summarize_video
+from intake_digest.sources.youtube import VideoMetadata
+from intake_digest.transcripts.normalize import Paragraph, Transcript
 
 T = TypeVar("T", bound=BaseModel)
 

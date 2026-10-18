@@ -14,8 +14,8 @@ import httpx
 import pytest
 import respx
 
-from video_digest.config import TranscriptionConfig
-from video_digest.transcripts.asr import ASRUnavailable, RemoteASRBackend
+from intake_digest.config import TranscriptionConfig
+from intake_digest.transcripts.asr import ASRUnavailable, RemoteASRBackend
 
 REMOTE = "http://mac.lan:8000"
 ENDPOINT = f"{REMOTE}/v1/audio/transcriptions"

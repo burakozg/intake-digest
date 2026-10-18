@@ -15,8 +15,8 @@ from pathlib import Path
 import pytest
 from fastapi.testclient import TestClient
 
-from video_digest.config import Settings
-from video_digest.main import create_app
+from intake_digest.config import Settings
+from intake_digest.main import create_app
 
 _MIN_LLM = {
     "tiers": {

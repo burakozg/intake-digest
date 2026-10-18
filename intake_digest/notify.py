@@ -73,7 +73,7 @@ class Notifier:
     async def job_failed(self, video_id: str, stage: str, error: str) -> None:
         """A pipeline stage raised — the video produced no note (design §9)."""
         await self.send(
-            f"video-digest: {video_id} failed at {stage}",
+            f"intake-digest: {video_id} failed at {stage}",
             error,
             priority="high",
             tags=["movie_camera", "x"],
@@ -86,7 +86,7 @@ class Notifier:
             return
         ids = ", ".join(str(r["item_key"]) for r in rows)
         await self.send(
-            f"video-digest: {len(rows)} video(s) waiting on ASR",
+            f"intake-digest: {len(rows)} video(s) waiting on ASR",
             f"Parked longer than the staleness window: {ids}",
             priority="default",
             tags=["movie_camera", "hourglass"],

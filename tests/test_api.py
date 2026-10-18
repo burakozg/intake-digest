@@ -6,9 +6,9 @@ from pathlib import Path
 import pytest
 from fastapi.testclient import TestClient
 
-from video_digest.config import Settings
-from video_digest.llm.models import VideoDigest
-from video_digest.main import create_app
+from intake_digest.config import Settings
+from intake_digest.llm.models import VideoDigest
+from intake_digest.main import create_app
 
 _MIN_LLM = {
     "tiers": {
@@ -56,7 +56,7 @@ class TestCreateJob:
     def test_posts_a_job_and_stores_metadata(
         self, settings: Settings, monkeypatch: pytest.MonkeyPatch
     ) -> None:
-        from video_digest.sources.youtube import VideoMetadata
+        from intake_digest.sources.youtube import VideoMetadata
 
         def fake_fetch(url: str, *, max_duration_minutes: int, cookies_file: str | None) -> VideoMetadata:
             return VideoMetadata(
@@ -70,7 +70,7 @@ class TestCreateJob:
                 auto_caption_langs=["en"],
             )
 
-        monkeypatch.setattr("video_digest.pipeline.resolve.fetch_metadata", fake_fetch)
+        monkeypatch.setattr("intake_digest.pipeline.resolve.fetch_metadata", fake_fetch)
 
         client = TestClient(create_app(settings))
         resp = client.post(
@@ -93,7 +93,7 @@ class TestCreateJob:
     def test_repeat_returns_existing(
         self, settings: Settings, monkeypatch: pytest.MonkeyPatch
     ) -> None:
-        from video_digest.sources.youtube import VideoMetadata
+        from intake_digest.sources.youtube import VideoMetadata
 
         calls: list[str] = []
 
@@ -109,7 +109,7 @@ class TestCreateJob:
                 description="d",
             )
 
-        monkeypatch.setattr("video_digest.pipeline.resolve.fetch_metadata", fake_fetch)
+        monkeypatch.setattr("intake_digest.pipeline.resolve.fetch_metadata", fake_fetch)
         client = TestClient(create_app(settings))
         headers = {"X-API-Key": "test-admin-key"}
         payload = {"url": "https://www.youtube.com/watch?v=dQw4w9WgXcQ"}

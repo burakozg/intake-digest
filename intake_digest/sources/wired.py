@@ -35,7 +35,7 @@ _CAPTION = re.compile(
 _ISO_DURATION = re.compile(r"^PT(?:(\d+)H)?(?:(\d+)M)?(?:(\d+(?:\.\d+)?)S)?$")
 
 #: A browser-ish UA: Wired serves the full page (transcript included) to it.
-_HEADERS = {"User-Agent": "Mozilla/5.0 (compatible; video-digest)"}
+_HEADERS = {"User-Agent": "Mozilla/5.0 (compatible; intake-digest)"}
 
 
 def resolve_url(url: str) -> str | None:

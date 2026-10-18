@@ -1,9 +1,9 @@
 from __future__ import annotations
 
-from video_digest.llm.models import Highlight, VideoDigest
-from video_digest.sources.youtube import VideoMetadata
-from video_digest.transcripts.normalize import Paragraph, Transcript
-from video_digest.vault.render import render_digest_note, render_transcript_note
+from intake_digest.llm.models import Highlight, VideoDigest
+from intake_digest.sources.youtube import VideoMetadata
+from intake_digest.transcripts.normalize import Paragraph, Transcript
+from intake_digest.vault.render import render_digest_note, render_transcript_note
 
 VID = "dQw4w9WgXcQ"
 

@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import pytest
 
-from video_digest.llm.prompts import PromptError, load_prompt
+from intake_digest.llm.prompts import PromptError, load_prompt
 
 
 class TestShippedPrompts:

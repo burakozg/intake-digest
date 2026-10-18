@@ -1,7 +1,7 @@
-# video-digest — non-secret configuration.
+# intake-digest — non-secret configuration.
 # Secrets belong in .env / environment only (see .env.example).
-# Env vars override these values: VIDEODIGEST_<SECTION>__<KEY> (double
-# underscore nests), e.g. VIDEODIGEST_ACQUISITION__MAX_DURATION_MINUTES=120.
+# Env vars override these values: INTAKE_<SECTION>__<KEY> (double
+# underscore nests), e.g. INTAKE_ACQUISITION__MAX_DURATION_MINUTES=120.
 #
 # Two YAML traps this file has to keep clear of (podcast-digest and vault-ask
 # both hit them): `**/*.md`-style globs need quoting, and PyYAML is YAML 1.1,
@@ -10,7 +10,7 @@
 vault:
   # The vault's own CouchDB — the same one Self-hosted LiveSync replicates
   # against. Deployment topology, so left null here; set via
-  # VIDEODIGEST_VAULT__COUCHDB_URL. A placeholder keeps this file bootable for
+  # INTAKE_VAULT__COUCHDB_URL. A placeholder keeps this file bootable for
   # tests and dry runs that never touch the vault.
   couchdb_url: null
   db: the_brain
@@ -33,7 +33,7 @@ acquisition:
 
 transcription:
   # The existing speaches container in ~/projects/asr-server, on the Mac.
-  # Deployment topology — set via VIDEODIGEST_TRANSCRIPTION__REMOTE_URL.
+  # Deployment topology — set via INTAKE_TRANSCRIPTION__REMOTE_URL.
   remote_url: "http://your-mac.example.local:8000"
   # Must match what the worker has loaded (GET /v1/models on it). Deploys
   # override this with ASR_MODEL from .deploy.env, which is required, so a

@@ -14,14 +14,14 @@ from typing import Any
 
 import pytest
 
-from video_digest.config import Settings
-from video_digest.db import connect
-from video_digest.llm.base import LLMUnavailable
-from video_digest.llm.models import VideoDigest
-from video_digest.pipeline.runner import run_due_jobs, run_job
-from video_digest.pipeline.transcript import ParkedForASR, TranscriptAcquired
-from video_digest.transcripts.normalize import Paragraph, Transcript
-from video_digest.vault.livesync import VaultUnavailable
+from intake_digest.config import Settings
+from intake_digest.db import connect
+from intake_digest.llm.base import LLMUnavailable
+from intake_digest.llm.models import VideoDigest
+from intake_digest.pipeline.runner import run_due_jobs, run_job
+from intake_digest.pipeline.transcript import ParkedForASR, TranscriptAcquired
+from intake_digest.transcripts.normalize import Paragraph, Transcript
+from intake_digest.vault.livesync import VaultUnavailable
 
 _MIN_LLM = {
     "tiers": {

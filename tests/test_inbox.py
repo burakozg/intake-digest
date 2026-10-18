@@ -12,11 +12,11 @@ from typing import Any
 
 import pytest
 
-from video_digest.config import AcquisitionConfig, VaultConfig
-from video_digest.db import connect
-from video_digest.pipeline.inbox import QUEUE_PLACEHOLDER, poll_inbox
-from video_digest.pipeline.resolve import EnqueueResult
-from video_digest.vault.livesync import VaultUnavailable
+from intake_digest.config import AcquisitionConfig, VaultConfig
+from intake_digest.db import connect
+from intake_digest.pipeline.inbox import QUEUE_PLACEHOLDER, poll_inbox
+from intake_digest.pipeline.resolve import EnqueueResult
+from intake_digest.vault.livesync import VaultUnavailable
 
 VID = "dQw4w9WgXcQ"
 NOTE = "13 video-summaries/2026-08-20-a-video.md"
@@ -133,7 +133,7 @@ async def test_an_already_linked_line_migrates_out_without_enqueueing(
     def boom(*_a: Any, **_kw: Any) -> list[EnqueueResult]:
         raise AssertionError("a line that is already a wikilink must not be enqueued")
 
-    monkeypatch.setattr("video_digest.pipeline.inbox.enqueue", boom)
+    monkeypatch.setattr("intake_digest.pipeline.inbox.enqueue", boom)
     changed = await poll_inbox(db, vault, acq, vcfg)  # type: ignore[arg-type]
 
     assert changed == 1
@@ -156,7 +156,7 @@ async def test_a_bracket_in_the_title_does_not_hide_the_wikilink(
     def boom(*_a: Any, **_kw: Any) -> list[EnqueueResult]:
         raise AssertionError("a line that is already a wikilink must not be enqueued")
 
-    monkeypatch.setattr("video_digest.pipeline.inbox.enqueue", boom)
+    monkeypatch.setattr("intake_digest.pipeline.inbox.enqueue", boom)
     changed = await poll_inbox(db, vault, acq, vcfg)  # type: ignore[arg-type]
 
     assert changed == 1
@@ -280,7 +280,7 @@ async def test_playlist_line_expands_to_one_bullet_per_note_in_completed(
             EnqueueResult(video_id="bbb", job_id="j2", status="created"),
         ]
 
-    monkeypatch.setattr("video_digest.pipeline.inbox.enqueue", fake_enqueue)
+    monkeypatch.setattr("intake_digest.pipeline.inbox.enqueue", fake_enqueue)
     changed = await poll_inbox(db, vault, acq, vcfg)  # type: ignore[arg-type]
 
     assert changed == 1

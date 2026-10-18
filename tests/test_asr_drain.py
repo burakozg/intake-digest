@@ -9,11 +9,11 @@ from pathlib import Path
 
 import pytest
 
-from video_digest.config import Settings
-from video_digest.db import connect
-from video_digest.pipeline.asr_drain import alert_on_stale_pending_asr, drain_pending_asr
-from video_digest.pipeline.transcript import ParkedForASR, TranscriptAcquired, park_pending_asr
-from video_digest.transcripts.normalize import Paragraph, Transcript
+from intake_digest.config import Settings
+from intake_digest.db import connect
+from intake_digest.pipeline.asr_drain import alert_on_stale_pending_asr, drain_pending_asr
+from intake_digest.pipeline.transcript import ParkedForASR, TranscriptAcquired, park_pending_asr
+from intake_digest.transcripts.normalize import Paragraph, Transcript
 
 _MIN_LLM = {
     "tiers": {

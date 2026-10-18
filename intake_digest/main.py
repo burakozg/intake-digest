@@ -87,7 +87,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         scheduler.shutdown(wait=False)
         log.info("shutdown")
 
-    app = FastAPI(title="video-digest", version=__version__, lifespan=lifespan)
+    app = FastAPI(title="intake-digest", version=__version__, lifespan=lifespan)
     app.state.settings = settings
     app.state.db = connect(settings.output.db_path)
     app.state.admin_api_key = (

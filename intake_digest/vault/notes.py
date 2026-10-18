@@ -23,7 +23,10 @@ from __future__ import annotations
 
 import re
 
-#: This application's owner tag (homelab/README.md's owner-tag table).
+#: The video writer's owner tag (homelab/README.md's owner-tag table). It is
+#: the name of a region inside notes that already exist in the vault, not of
+#: this service: renaming it would leave every old region stale and append a
+#: second one beside it. Stays `video-digest` through the service rename.
 OWNER = "video-digest"
 
 #: Frontmatter keys this writer owns are prefixed.

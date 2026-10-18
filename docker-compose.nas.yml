@@ -27,13 +27,13 @@
 #    unreachable inbound for minutes while it looks perfectly healthy.
 #
 # 4. Memory. This NAS runs ~7.8 GB total with a few hundred MB genuinely
-#    free alongside a dozen other containers. video-digest itself is thin —
+#    free alongside a dozen other containers. intake-digest itself is thin —
 #    yt-dlp and httpx, no ML runtime in-process, ASR and heavy LLM work both
 #    happen elsewhere over HTTP (transcription.remote_url, llm.tiers) — so the
 #    cap is set to protect the rest of the box, not because this needs it.
 
 services:
-  video-digest:
+  intake-digest:
     user: "1002:100"
     read_only: true
     tmpfs:
@@ -43,7 +43,7 @@ services:
     mem_limit: 512m
 
     volumes:
-      - /share/Container/video-digest/data:/data
+      - /share/Container/intake-digest/data:/data
 
     environment:
       TZ: Europe/Stockholm
@@ -52,7 +52,7 @@ services:
       # not the per-app placeholder config.yaml ships. Env wins over
       # config.yaml (config.py precedence), so the tracked file keeps its
       # harmless default.
-      VIDEODIGEST_VAULT__USER: admin
+      INTAKE_VAULT__USER: admin
 
     networks:
       QNET_PLACEHOLDER:

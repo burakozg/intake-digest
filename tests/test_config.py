@@ -5,7 +5,7 @@ from pathlib import Path
 import pytest
 from pydantic import ValidationError
 
-from video_digest.config import LLMConfig, LLMTierConfig, Settings, load_settings
+from intake_digest.config import LLMConfig, LLMTierConfig, Settings, load_settings
 
 #: The two required sections with no field defaults — every direct
 #: `Settings(...)` construction in this file needs them, so it is a fixture
@@ -22,9 +22,9 @@ _MIN_TRANSCRIPTION = {"remote_url": "http://mac.local:8000"}
 class TestShippedConfig:
     def test_repo_config_yaml_is_valid(self, monkeypatch: pytest.MonkeyPatch) -> None:
         """The shipped config.yaml must load — it is the deployment default."""
-        monkeypatch.setenv("VIDEODIGEST_ADMIN_API_KEY", "test-key")
+        monkeypatch.setenv("INTAKE_ADMIN_API_KEY", "test-key")
         # config.yaml's tiers both default to an openrouter primary now.
-        monkeypatch.setenv("VIDEODIGEST_OPENROUTER_API_KEY", "sk-or-test")
+        monkeypatch.setenv("INTAKE_OPENROUTER_API_KEY", "sk-or-test")
         settings = load_settings(Path(__file__).parent.parent / "config.yaml")
         assert settings.vault.notes_dir == "13 video-summaries"
         assert settings.vault.transcripts_dir == "14 video-transcripts"
@@ -139,3 +139,54 @@ class TestNotifications:
             notifications={"enabled": True, "ntfy_url": "http://ntfy.lan:8080", "topic": "vd"},
         )
         assert settings.notifications.enabled is True
+
+
+class TestLegacyEnvPrefix:
+    """The service was `video-digest`; an old `.env`/environment must not be
+    silently ignored after the rename."""
+
+    @pytest.fixture(autouse=True)
+    def _scoped_environ(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        """The shim writes `INTAKE_*` into the process environment; give the
+        test its own copy so that cannot leak into the next one."""
+        import os
+
+        monkeypatch.setattr(os, "environ", os.environ.copy())
+
+    def _cfg(self, tmp_path: Path) -> Path:
+        cfg = tmp_path / "config.yaml"
+        cfg.write_text(
+            "llm:\n  tiers:\n"
+            "    map: {primary: {provider: ollama, model: m}}\n"
+            "    reduce: {primary: {provider: ollama, model: m}}\n"
+            "transcription:\n  remote_url: http://mac.local:8000\n"
+        )
+        return cfg
+
+    def test_old_prefix_is_adopted_with_a_deprecation_warning(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        monkeypatch.setenv("VIDEODIGEST_ADMIN_API_KEY", "old-key")
+        monkeypatch.setenv("INTAKE_OPENROUTER_API_KEY", "sk-or-test")
+        with pytest.warns(DeprecationWarning, match="VIDEODIGEST_ADMIN_API_KEY"):
+            settings = load_settings(self._cfg(tmp_path))
+        assert settings.admin_api_key.get_secret_value() == "old-key"
+
+    def test_new_prefix_wins_over_old(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        monkeypatch.setenv("VIDEODIGEST_ADMIN_API_KEY", "old-key")
+        monkeypatch.setenv("INTAKE_ADMIN_API_KEY", "new-key")
+        monkeypatch.setenv("INTAKE_OPENROUTER_API_KEY", "sk-or-test")
+        settings = load_settings(self._cfg(tmp_path))
+        assert settings.admin_api_key.get_secret_value() == "new-key"
+
+    def test_old_prefix_in_dotenv_is_adopted(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        (tmp_path / ".env").write_text(
+            "VIDEODIGEST_ADMIN_API_KEY=from-dotenv\nVIDEODIGEST_OPENROUTER_API_KEY=sk-or-test\n"
+        )
+        with pytest.warns(DeprecationWarning):
+            settings = load_settings(self._cfg(tmp_path))
+        assert settings.admin_api_key.get_secret_value() == "from-dotenv"

@@ -16,7 +16,7 @@ COPY pyproject.toml uv.lock README.md ./
 RUN uv sync --frozen --no-install-project --no-dev
 
 # --- application layer ---------------------------------------------------
-COPY video_digest ./video_digest
+COPY intake_digest ./intake_digest
 COPY config.yaml ./
 RUN uv sync --frozen --no-dev
 
@@ -39,4 +39,4 @@ EXPOSE 8090
 HEALTHCHECK --interval=60s --timeout=10s --start-period=30s --retries=3 \
     CMD python -c "import sys,urllib.request; sys.exit(0 if urllib.request.urlopen('http://127.0.0.1:8090/healthz', timeout=8).status==200 else 1)"
 
-CMD ["python", "-m", "video_digest"]
+CMD ["python", "-m", "intake_digest"]

@@ -4,8 +4,8 @@ from pathlib import Path
 
 import pytest
 
-from video_digest.sources import wired
-from video_digest.sources.youtube import VideoRejected
+from intake_digest.sources import wired
+from intake_digest.sources.youtube import VideoRejected
 
 SLUG = "how-ai-leaders-are-actually-rewiring-business"
 PAGE = (Path(__file__).parent / "fixtures" / "wired_page.html").read_text()

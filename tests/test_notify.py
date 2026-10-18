@@ -8,8 +8,8 @@ import httpx
 import pytest
 import respx
 
-from video_digest.config import NotificationConfig
-from video_digest.notify import Notifier
+from intake_digest.config import NotificationConfig
+from intake_digest.notify import Notifier
 
 _URL = "https://ntfy.example"
 _TOPIC = "vid-alerts"

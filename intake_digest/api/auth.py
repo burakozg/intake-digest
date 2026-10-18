@@ -75,7 +75,7 @@ async def require_api_key(
         # Fail closed: an unset key must never mean "open to everyone".
         raise HTTPException(
             status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
-            detail="admin API key is not configured; set VIDEODIGEST_ADMIN_API_KEY",
+            detail="admin API key is not configured; set INTAKE_ADMIN_API_KEY",
         )
 
     address = request.client.host if request.client else "unknown"

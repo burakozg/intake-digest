@@ -6,7 +6,7 @@ deploy-out/
 .env
 !.env.example
 
-# Runtime state (SQLite app state, work dir — see video_digest.db)
+# Runtime state (SQLite app state, work dir — see intake_digest.db)
 data/
 
 .venv/

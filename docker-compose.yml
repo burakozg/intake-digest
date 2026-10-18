@@ -1,4 +1,4 @@
-# video-digest — self-hosted stack.
+# intake-digest — self-hosted stack.
 #
 # One container, no companion database of its own: app state is
 # /data/video_digest.sqlite (plan §1.3), and the vault's CouchDB is remote
@@ -12,7 +12,7 @@
 # No TLS and no authentication beyond a shared API key (api/auth.py). Built
 # for a trusted LAN, LAN-only for v1 (plan §1.10). DO NOT PORT-FORWARD IT.
 
-name: video-digest
+name: intake-digest
 
 x-logging: &default-logging
   driver: json-file
@@ -21,34 +21,34 @@ x-logging: &default-logging
     max-file: "5"
 
 services:
-  video-digest:
+  intake-digest:
     build:
       context: .
       dockerfile: Dockerfile
-    image: video-digest:0.1.0
-    container_name: video-digest
+    image: intake-digest:0.1.0
+    container_name: intake-digest
     restart: unless-stopped
     environment:
-      VIDEODIGEST_CONFIG_FILE: /config/config.yaml
-      VIDEODIGEST_ADMIN_API_KEY: ${VIDEODIGEST_ADMIN_API_KEY:?set VIDEODIGEST_ADMIN_API_KEY in .env}
+      INTAKE_CONFIG_FILE: /config/config.yaml
+      INTAKE_ADMIN_API_KEY: ${INTAKE_ADMIN_API_KEY:?set INTAKE_ADMIN_API_KEY in .env}
       # The vault's own CouchDB (obsidian-vault-writer skill) — a different
       # database, owned by a different application, so its own credentials.
-      VIDEODIGEST_VAULT__COUCHDB_URL: ${VAULT_COUCHDB_URL:?set VAULT_COUCHDB_URL in .env}
-      VIDEODIGEST_VAULT_COUCHDB_PASSWORD: ${VAULT_COUCHDB_PASSWORD:?set VAULT_COUCHDB_PASSWORD in .env}
+      INTAKE_VAULT__COUCHDB_URL: ${VAULT_COUCHDB_URL:?set VAULT_COUCHDB_URL in .env}
+      INTAKE_VAULT_COUCHDB_PASSWORD: ${VAULT_COUCHDB_PASSWORD:?set VAULT_COUCHDB_PASSWORD in .env}
       # The Mac running the ASR worker (~/projects/asr-server). Deployment
       # topology, so environment-set rather than console-editable (there is no
       # console) or committed to config.yaml.
-      VIDEODIGEST_TRANSCRIPTION__REMOTE_URL: ${ASR_REMOTE_URL:?set ASR_REMOTE_URL in .env}
+      INTAKE_TRANSCRIPTION__REMOTE_URL: ${ASR_REMOTE_URL:?set ASR_REMOTE_URL in .env}
       # The model actually loaded on that worker — config.yaml's tracked
       # default is not necessarily what's installed there,
       # and a mismatch 404s silently forever (see ASR_MODEL in .deploy.env).
-      VIDEODIGEST_TRANSCRIPTION__MODEL: ${ASR_MODEL:?set ASR_MODEL in .env}
-      VIDEODIGEST_OPENROUTER_API_KEY: ${VIDEODIGEST_OPENROUTER_API_KEY:-}
-      VIDEODIGEST_NTFY_TOKEN: ${VIDEODIGEST_NTFY_TOKEN:-}
+      INTAKE_TRANSCRIPTION__MODEL: ${ASR_MODEL:?set ASR_MODEL in .env}
+      INTAKE_OPENROUTER_API_KEY: ${INTAKE_OPENROUTER_API_KEY:-}
+      INTAKE_NTFY_TOKEN: ${INTAKE_NTFY_TOKEN:-}
       TZ: ${TZ:-Europe/Stockholm}
     volumes:
       - ./config.yaml:/config/config.yaml:ro
-      - video-digest-data:/data
+      - intake-digest-data:/data
     ports:
       - "8090:8090"
     logging: *default-logging
@@ -60,4 +60,4 @@ services:
       retries: 3
 
 volumes:
-  video-digest-data:
+  intake-digest-data:

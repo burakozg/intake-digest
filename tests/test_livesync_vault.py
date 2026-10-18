@@ -14,8 +14,8 @@ import httpx
 import pytest
 import respx
 
-from video_digest.config import VaultConfig
-from video_digest.vault.livesync import LiveSyncVault
+from intake_digest.config import VaultConfig
+from intake_digest.vault.livesync import LiveSyncVault
 
 COUCH = "http://vault-couch.lan:5984"
 DB = "the_brain"

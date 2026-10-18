@@ -11,11 +11,11 @@ import httpx
 import pytest
 import respx
 
-from video_digest import sanitize
-from video_digest.config import VaultConfig
-from video_digest.db import connect
-from video_digest.llm.models import Highlight, VideoDigest
-from video_digest.pipeline.write import (
+from intake_digest import sanitize
+from intake_digest.config import VaultConfig
+from intake_digest.db import connect
+from intake_digest.llm.models import Highlight, VideoDigest
+from intake_digest.pipeline.write import (
     TopicIndex,
     TopicPage,
     _parse_list_value,
@@ -24,12 +24,12 @@ from video_digest.pipeline.write import (
     resolve_topic_links,
     write_video_note,
 )
-from video_digest.sources.youtube import VideoMetadata
-from video_digest.transcripts.normalize import Paragraph, Transcript
-from video_digest.vault.livesync import LiveSyncVault, _chunk_id
-from video_digest.vault.names import adopt_topic_filename
-from video_digest.vault.notes import yaml_flow_list
-from video_digest.vault.render import render_digest_note, render_transcript_note
+from intake_digest.sources.youtube import VideoMetadata
+from intake_digest.transcripts.normalize import Paragraph, Transcript
+from intake_digest.vault.livesync import LiveSyncVault, _chunk_id
+from intake_digest.vault.names import adopt_topic_filename
+from intake_digest.vault.notes import yaml_flow_list
+from intake_digest.vault.render import render_digest_note, render_transcript_note
 
 COUCH = "http://vault-couch.lan:5984"
 DB = "the_brain"
@@ -585,11 +585,11 @@ class TestWrittenAtIsWriteOnce:
         _mock_empty_topics_listing()
         _mock_all_writes_succeed()
 
-        monkeypatch.setattr("video_digest.pipeline.write.iso_now", lambda: "2026-01-01T00:00:00+00:00")
+        monkeypatch.setattr("intake_digest.pipeline.write.iso_now", lambda: "2026-01-01T00:00:00+00:00")
         await write_video_note(db, vault, cfg, _meta(), _digest(), _transcript(), tier="T1")
         first = db.execute("SELECT written_at, updated_at FROM items WHERE id = ?", (ROW_ID,)).fetchone()
 
-        monkeypatch.setattr("video_digest.pipeline.write.iso_now", lambda: "2026-09-09T00:00:00+00:00")
+        monkeypatch.setattr("intake_digest.pipeline.write.iso_now", lambda: "2026-09-09T00:00:00+00:00")
         await write_video_note(db, vault, cfg, _meta(), _digest(), _transcript(), tier="T1")
         second = db.execute("SELECT written_at, updated_at FROM items WHERE id = ?", (ROW_ID,)).fetchone()
 

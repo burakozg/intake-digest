@@ -3,8 +3,8 @@ from __future__ import annotations
 import time
 from pathlib import Path
 
-from video_digest.config import OutputConfig
-from video_digest.pipeline.cleanup import sweep_orphaned_media
+from intake_digest.config import OutputConfig
+from intake_digest.pipeline.cleanup import sweep_orphaned_media
 
 
 def _cfg(tmp_path: Path, **overrides: object) -> OutputConfig:

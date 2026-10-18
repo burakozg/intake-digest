@@ -10,6 +10,7 @@ silently ignored.
 from __future__ import annotations
 
 import os
+import warnings
 from enum import StrEnum
 from functools import lru_cache
 from pathlib import Path
@@ -65,7 +66,7 @@ def _require_http_url(value: str) -> str:
 class VaultConfig(StrictModel):
     """The vault's CouchDB — the same one Self-hosted LiveSync replicates
     against. Deployment topology, so not console-overridable (there is no
-    console): the address is set via VIDEODIGEST_VAULT__COUCHDB_URL, never
+    console): the address is set via INTAKE_VAULT__COUCHDB_URL, never
     committed.
     """
 
@@ -349,7 +350,7 @@ class Settings(BaseSettings):
     """Fully-resolved application configuration."""
 
     model_config = SettingsConfigDict(
-        env_prefix="VIDEODIGEST_",
+        env_prefix="INTAKE_",
         env_nested_delimiter="__",
         extra="forbid",
         env_file=".env",
@@ -416,7 +417,7 @@ class Settings(BaseSettings):
                     needed.add(endpoint.provider)
         if Provider.OPENROUTER in needed and not self.openrouter_api_key:
             raise ValueError(
-                "an openrouter endpoint is active but VIDEODIGEST_OPENROUTER_API_KEY is "
+                "an openrouter endpoint is active but INTAKE_OPENROUTER_API_KEY is "
                 "unset (set the key, or set allow_cloud_fallback: false for that tier)"
             )
         return self
@@ -443,11 +444,47 @@ class Settings(BaseSettings):
                 return None
 
 
+_LEGACY_ENV_PREFIX = "VIDEODIGEST_"
+_ENV_PREFIX = "INTAKE_"
+
+
+def _adopt_legacy_env() -> list[str]:
+    """Honour the pre-rename `VIDEODIGEST_*` names for one release.
+
+    The service was `video-digest` until it became a generic intake queue. A
+    `.env` or process environment written for the old name would otherwise be
+    ignored without a word — the settings filter on the new prefix — and the
+    symptom (no admin key, no LLM key) looks like a different bug entirely.
+    A new-prefix value always wins; each adopted old name is returned so the
+    caller can say so once.
+    """
+    from dotenv import dotenv_values
+
+    adopted: list[str] = []
+    sources: dict[str, str | None] = {**dotenv_values(".env"), **os.environ}
+    for key, value in sources.items():
+        if not key.startswith(_LEGACY_ENV_PREFIX) or value is None:
+            continue
+        new = _ENV_PREFIX + key[len(_LEGACY_ENV_PREFIX) :]
+        if new not in os.environ:
+            os.environ[new] = value
+            adopted.append(key)
+    return adopted
+
+
 def load_settings(config_file: str | Path | None = None) -> Settings:
-    """Build Settings from ``config_file`` (default: $VIDEODIGEST_CONFIG_FILE
+    """Build Settings from ``config_file`` (default: $INTAKE_CONFIG_FILE
     or ./config.yaml)."""
     global _active_yaml_path
-    path = Path(config_file or os.environ.get("VIDEODIGEST_CONFIG_FILE", DEFAULT_CONFIG_FILE))
+    adopted = _adopt_legacy_env()
+    if adopted:
+        warnings.warn(
+            f"{', '.join(sorted(adopted))}: the VIDEODIGEST_ prefix is deprecated, "
+            "rename to INTAKE_",
+            DeprecationWarning,
+            stacklevel=2,
+        )
+    path = Path(config_file or os.environ.get("INTAKE_CONFIG_FILE", DEFAULT_CONFIG_FILE))
     _active_yaml_path = path
     return Settings()
 

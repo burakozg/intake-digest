@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Deploy video-digest to the NAS. Run it on the Mac.
+# Deploy intake-digest to the NAS. Run it on the Mac.
 #
 #   ./deploy            build, ship, bring it up
 #   ./deploy ship       build and ship only — nothing restarted
@@ -13,10 +13,10 @@ set -euo pipefail
 
 cd "$(dirname "$0")"
 . ./deploy.lib.sh
-nas_load_env "$PWD" "/share/Container/video-digest"
+nas_load_env "$PWD" "/share/Container/intake-digest"
 
 LIFECYCLE=compose
-TAG="video-digest:0.1.0"
+TAG="intake-digest:0.1.0"
 NAS_COMPOSE="docker-compose.nas.yml"
 RENDERED="deploy-out/docker-compose.nas.yml"
 
@@ -67,23 +67,37 @@ do_ship() {
 
 # The credentials the container needs, pushed from the local .env — rotate the
 # key locally and the next ship carries it, same reasoning as vault-ask.
+# env_get <emit-as> <name>...: print `emit-as=value` for the first of <name>
+# found in the local .env. The pre-rename VIDEODIGEST_ spellings are still
+# accepted (the new INTAKE_ one wins) so an existing .env keeps shipping; the
+# NAS always receives the new names. Emits nothing if none is set, as before.
+env_get() {
+  local out="$1" name line; shift
+  for name in "$@"; do
+    line="$(grep -E "^${name}=" .env | head -n1 || true)"
+    if [ -n "$line" ]; then
+      echo "${out}=${line#*=}"
+      return 0
+    fi
+  done
+}
+
 ship_secrets() {
-  [ -f .env ] || die ".env is missing — it holds VIDEODIGEST_ADMIN_API_KEY, " \
-    "VIDEODIGEST_VAULT_COUCHDB_PASSWORD and the LLM provider key(s)."
+  [ -f .env ] || die ".env is missing — it holds INTAKE_ADMIN_API_KEY, " \
+    "INTAKE_VAULT_COUCHDB_PASSWORD and the LLM provider key(s)."
   local tmp
-  tmp="$(mktemp -t video-digest-env)"
+  tmp="$(mktemp -t intake-digest-env)"
   # shellcheck disable=SC2064
   trap "rm -f '${tmp}'" EXIT
   {
-    grep -E '^VIDEODIGEST_ADMIN_API_KEY=' .env || true
+    env_get INTAKE_ADMIN_API_KEY VIDEODIGEST_ADMIN_API_KEY
     # docker-compose.yml interpolates ${VAULT_COUCHDB_PASSWORD} (the short
     # name, like the URL/ASR vars below) — translate from the local .env's
-    # VIDEODIGEST_-prefixed name the app itself uses.
-    grep -E '^VIDEODIGEST_VAULT_COUCHDB_PASSWORD=' .env \
-      | sed 's/^VIDEODIGEST_VAULT_COUCHDB_PASSWORD=/VAULT_COUCHDB_PASSWORD=/' || true
-    grep -E '^VIDEODIGEST_OPENROUTER_API_KEY=' .env || true
-    grep -E '^VIDEODIGEST_ANTHROPIC_API_KEY=' .env || true
-    grep -E '^VIDEODIGEST_NTFY_TOKEN=' .env || true
+    # INTAKE_-prefixed name the app itself uses.
+    env_get VAULT_COUCHDB_PASSWORD INTAKE_VAULT_COUCHDB_PASSWORD VIDEODIGEST_VAULT_COUCHDB_PASSWORD
+    env_get INTAKE_OPENROUTER_API_KEY VIDEODIGEST_OPENROUTER_API_KEY
+    env_get INTAKE_ANTHROPIC_API_KEY VIDEODIGEST_ANTHROPIC_API_KEY
+    env_get INTAKE_NTFY_TOKEN VIDEODIGEST_NTFY_TOKEN
     echo "VAULT_COUCHDB_URL=http://${VAULT_LAN_IP}:5984"
     echo "ASR_REMOTE_URL=http://${ASR_HOST}:8000"
     echo "ASR_MODEL=${ASR_MODEL}"
@@ -104,7 +118,7 @@ do_apply() {
   # a dozen other containers and a cold recreate has measured minutes, not
   # seconds (homelab/README.md "A slow start on this NAS looks exactly like a
   # hang").
-  nas_wait_reachable "video-digest" "http://${APP_LAN_IP}:8090" "/healthz" "2.." 36 \
+  nas_wait_reachable "intake-digest" "http://${APP_LAN_IP}:8090" "/healthz" "2.." 36 \
     || die "Deployed, but the API is not reachable over the LAN — see above."
   echo
   echo "done."
@@ -120,18 +134,18 @@ do_check() {
   nas_ssh "cd '${NAS_APP_DIR}' && ${NAS_DOCKER_ENV} '${NAS_DOCKER_BIN}' compose -f docker-compose.yml -f docker-compose.nas.yml ps --format 'table {{.Name}}\t{{.Status}}'"
   echo
   echo "══ reachability ═════════════════════════════════════════════"
-  nas_probe "video-digest" "http://${APP_LAN_IP}:8090" "/healthz" || {
+  nas_probe "intake-digest" "http://${APP_LAN_IP}:8090" "/healthz" || {
     echo "  ↳ Expected if you're off the LAN/VPN. The NAS host cannot reach its"
     echo "    own macvlan children either — probe from another machine, not ssh."
   }
   echo
   echo "══ recent log ═══════════════════════════════════════════════"
-  nas_ssh "${NAS_DOCKER_ENV} '${NAS_DOCKER_BIN}' logs --tail 20 video-digest 2>&1" || true
+  nas_ssh "${NAS_DOCKER_ENV} '${NAS_DOCKER_BIN}' logs --tail 20 intake-digest 2>&1" || true
 }
 
 do_logs() {
   nas_require_reachable
-  nas_ssh -t "${NAS_DOCKER_ENV} '${NAS_DOCKER_BIN}' logs -f --tail 40 video-digest"
+  nas_ssh -t "${NAS_DOCKER_ENV} '${NAS_DOCKER_BIN}' logs -f --tail 40 intake-digest"
 }
 
 usage() {

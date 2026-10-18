@@ -15,11 +15,11 @@ from typing import Any
 import pytest
 from fastapi.testclient import TestClient
 
-from video_digest.config import Settings
-from video_digest.db import connect
-from video_digest.main import create_app
-from video_digest.pipeline.kinds import get_kind, kind_names
-from video_digest.pipeline.runner import run_due_jobs, run_job
+from intake_digest.config import Settings
+from intake_digest.db import connect
+from intake_digest.main import create_app
+from intake_digest.pipeline.kinds import get_kind, kind_names
+from intake_digest.pipeline.runner import run_due_jobs, run_job
 
 _MIN_LLM = {
     "tiers": {

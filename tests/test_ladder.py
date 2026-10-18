@@ -3,9 +3,9 @@ from __future__ import annotations
 import httpx
 import pytest
 
-from video_digest.config import AcquisitionConfig
-from video_digest.sources.youtube import VideoMetadata
-from video_digest.transcripts.ladder import NeedsASR, acquire, t1_is_trustworthy
+from intake_digest.config import AcquisitionConfig
+from intake_digest.sources.youtube import VideoMetadata
+from intake_digest.transcripts.ladder import NeedsASR, acquire, t1_is_trustworthy
 
 VID = "dQw4w9WgXcQ"
 

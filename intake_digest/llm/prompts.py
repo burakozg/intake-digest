@@ -1,7 +1,7 @@
 """Versioned prompt loading.
 
 Ported from `podcast_agent/llm/prompts.py`. Prompts live in
-`video_digest/prompts/<name>_v<N>.md` as two sections:
+`intake_digest/prompts/<name>_v<N>.md` as two sections:
 
     ## SYSTEM
     ...

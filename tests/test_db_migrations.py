@@ -14,8 +14,8 @@ from pathlib import Path
 
 import pytest
 
-from video_digest import db as db_module
-from video_digest.db import SCHEMA_VERSION, connect
+from intake_digest import db as db_module
+from intake_digest.db import SCHEMA_VERSION, connect
 
 
 def test_fresh_db_is_stamped_at_the_current_version(tmp_path: Path) -> None:

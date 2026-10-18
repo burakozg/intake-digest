@@ -14,7 +14,7 @@ import httpx
 import pytest
 import respx
 
-from video_digest.sources import youtube as yt
+from intake_digest.sources import youtube as yt
 
 URL = "https://r1---xyz.googlevideo.com/timedtext?sig=abc"
 
