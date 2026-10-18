@@ -23,6 +23,7 @@ vault:
   inbox_note: "00 intake/_intake_queue.md"
   completed_note: "00 intake/_intake_completed.md"
   legacy_inbox_notes: ["13 video-summaries/_video-queue.md"]
+  legacy_completed_notes: ["13 video-summaries/_video-completed.md"]
   topic_creation_threshold: 2
   timeout_s: 30
 

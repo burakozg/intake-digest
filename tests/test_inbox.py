@@ -300,3 +300,80 @@ async def test_indentation_and_bullet_style_are_preserved(tmp_path: Path) -> Non
     await poll_inbox(db, vault, acq, vcfg)  # type: ignore[arg-type]
 
     assert "\n  * [[" in vault.written(COMPLETED)
+
+
+def _seed_upload(db: Any, *, note_path: str | None = "15 PDFs/a.md") -> None:
+    db.execute(
+        "INSERT INTO items (id, kind, item_key, url, canonical_url, metadata, note_path, "
+        "origin, stage_resolve, stage_metadata, stage_write, created_at, updated_at) "
+        "VALUES ('pdf:abc', 'pdf', 'abc', 'u', 'u', ?, ?, 'upload', 'done', 'done', 'done', "
+        "'2026-10-18T10:43:00+00:00', '2026-10-18T10:43:00+00:00')",
+        (json.dumps({"title": "A Paper"}), note_path),
+    )
+    db.commit()
+
+
+@pytest.mark.asyncio
+async def test_an_uploaded_pdf_is_logged_in_completed_once(tmp_path: Path) -> None:
+    db = connect(tmp_path / "s.sqlite")
+    _seed_upload(db)
+    acq, vcfg = _cfg()
+    vault = FakeVault({INBOX: "x\n"})
+
+    await poll_inbox(db, vault, acq, vcfg)  # type: ignore[arg-type]
+    completed = vault.written(COMPLETED)
+    assert completed is not None
+    assert "## 2026-10-18" in completed
+    assert "- [[15 PDFs/a.md|A Paper]]" in completed
+
+    # Logged once: deleting the line by hand is respected on later polls.
+    vault.writes.clear()
+    vault._notes[COMPLETED] = "## Older\n"
+    await poll_inbox(db, vault, acq, vcfg)  # type: ignore[arg-type]
+    assert vault.written(COMPLETED) == "## Older\n"
+    assert not vault.writes
+
+
+@pytest.mark.asyncio
+async def test_an_upload_without_a_note_yet_is_not_logged(tmp_path: Path) -> None:
+    db = connect(tmp_path / "s.sqlite")
+    _seed_upload(db, note_path=None)
+    acq, vcfg = _cfg()
+    vault = FakeVault({INBOX: "x\n"})
+
+    await poll_inbox(db, vault, acq, vcfg)  # type: ignore[arg-type]
+
+    assert vault.written(COMPLETED) is None
+
+
+@pytest.mark.asyncio
+async def test_a_legacy_completed_note_is_folded_in_then_pointed_at_the_new_one(
+    tmp_path: Path,
+) -> None:
+    db = connect(tmp_path / "s.sqlite")
+    legacy = COMPLETED
+    new = "00 intake/_intake_completed.md"
+    vcfg = VaultConfig(inbox_note=INBOX, completed_note=new, legacy_completed_notes=[legacy])
+    vault = FakeVault(
+        {
+            INBOX: "x\n",
+            new: "## 2026-10-15\n[[new.md|New]]\n",
+            legacy: "## 2026-10-15\n[[old.md|Old]]\n\n## 2026-10-01\n[[older.md|Older]]\n",
+        }
+    )
+
+    await poll_inbox(db, vault, AcquisitionConfig(), vcfg)  # type: ignore[arg-type]
+
+    completed = vault.written(new)
+    assert completed is not None
+    day = completed.split("## 2026-10-15\n")[1].split("\n\n")[0]
+    assert "[[new.md|New]]" in day and "[[old.md|Old]]" in day
+    assert "## 2026-10-01\n[[older.md|Older]]" in completed
+    assert vault.written(legacy) == "Moved to [[00 intake/_intake_completed]].\n"
+
+    # Idempotent: the pointer is not folded back in.
+    before = vault.written(new)
+    vault.writes.clear()
+    await poll_inbox(db, vault, AcquisitionConfig(), vcfg)  # type: ignore[arg-type]
+    assert vault.written(new) == before
+    assert not vault.writes

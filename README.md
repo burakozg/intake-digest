@@ -29,8 +29,10 @@ it in place — the queue holds only what's new, still running, or failed, and
 is down to a single placeholder line the rest of the time (a 0-byte note
 vanishes in LiveSync, so it is never left empty; a lost one is recreated).
 The completed note is grouped by the day each item was requested, newest
-first, with `## Older` for entries the database cannot date. Lines moved
-before the rename are still in `13 video-summaries/_video-completed.md`.
+first, with `## Older` for entries the database cannot date. Uploaded PDFs
+never pass through the queue, so the poll adds them here too (once each). The
+old `13 video-summaries/_video-completed.md` is folded into this note on the
+first poll after the upgrade and left as a one-line pointer.
 `GET /jobs/{id}` reports stage progress, `POST /videos/{id}/rewrite`
 re-renders from the stored digest, `GET /videos` exports finished summaries
 (see below), and `GET /metrics` gives tier / spend totals. Still to do: the iOS Shortcut itself (client-side) and the watchlist

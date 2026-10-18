@@ -93,6 +93,11 @@ class VaultConfig(StrictModel):
     #: accumulating every video ever finished — the inbox note was 40 lines
     #: deep and 29 of them were done before this existed.
     completed_note: str = "00 intake/_intake_completed.md"
+    #: Earlier completed notes. Their lines are folded into `completed_note`
+    #: once and the old note is replaced by a pointer to the new one.
+    legacy_completed_notes: list[str] = Field(
+        default_factory=lambda: ["13 video-summaries/_video-completed.md"]
+    )
     #: Videos a topic must appear in before a new topic page is created.
     #: Reuses clippings-topics' matcher and threshold logic (canonical()).
     topic_creation_threshold: int = Field(default=2, ge=1, le=100)

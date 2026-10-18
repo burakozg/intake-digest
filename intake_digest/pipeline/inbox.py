@@ -74,7 +74,88 @@ async def poll_inbox(
         except VaultUnavailable as exc:
             log.warning("inbox.vault_unavailable", error=str(exc))
             return changed
+    try:
+        changed += await _sync_completed(db, vault, vault_cfg)
+    except VaultUnavailable as exc:
+        log.warning("inbox.vault_unavailable", error=str(exc))
     return changed
+
+
+def _moved_pointer(vault_cfg: VaultConfig) -> str:
+    target = vault_cfg.completed_note.removesuffix(".md")
+    return f"Moved to [[{target}]].\n"
+
+
+async def _sync_completed(
+    db: sqlite3.Connection, vault: LiveSyncVault, vault_cfg: VaultConfig
+) -> int:
+    """Two things that reach the completed note without passing through a queue
+    line: lines folded in from a legacy completed note (once, after which that
+    note becomes a pointer), and uploaded PDFs, which are never in any queue.
+    Returns the number of lines added."""
+    pointer = _moved_pointer(vault_cfg)
+    existing = (await vault.read_note(vault_cfg.completed_note)) or ""
+    text = existing
+    added = 0
+
+    folded: list[str] = []
+    for legacy in vault_cfg.legacy_completed_notes:
+        if legacy == vault_cfg.completed_note:
+            continue
+        old = await vault.read_note(legacy)
+        if old is None or not old.strip() or old == pointer:
+            continue
+        have = set(text.splitlines())
+        fresh = [
+            ln
+            for ln in old.splitlines()
+            if not ln.strip() or ln.startswith("## ") or ln not in have
+        ]
+        first = next((ln for ln in fresh if ln.strip()), "")
+        if not first.startswith("## "):
+            fresh.insert(0, "## Older")  # undated lines must not join the last day
+        added += sum(1 for ln in fresh if ln.strip() and not ln.startswith("## "))
+        text = text.rstrip("\n") + "\n\n" + "\n".join(fresh) + "\n"
+        folded.append(legacy)
+
+    uploads = db.execute(
+        "SELECT id, note_path, metadata, created_at FROM items "
+        "WHERE kind = 'pdf' AND origin = 'upload' AND note_path IS NOT NULL "
+        "AND stage_write = 'done' AND NOT EXISTS "
+        "(SELECT 1 FROM meta WHERE key = 'completed_logged:' || items.id) "
+        "ORDER BY created_at"
+    ).fetchall()
+    finished: list[tuple[str, str | None]] = []
+    for row in uploads:
+        title = ""
+        with contextlib.suppress(json.JSONDecodeError, TypeError):
+            title = str(json.loads(row["metadata"] or "{}").get("title") or "")
+        link = f"[[{row['note_path']}|{title}]]" if title else f"[[{row['note_path']}]]"
+        finished.append((f"- {link}", str(row["created_at"])[:10]))
+
+    if not folded and not finished:
+        return 0
+    await vault.project(
+        vault_cfg.completed_note,
+        _group_completed(db, text, finished),
+        mtime_ms=epoch_ms(),
+        merge=False,
+    )
+    for legacy in folded:
+        await vault.project(legacy, pointer, mtime_ms=epoch_ms(), merge=False)
+    for row in uploads:
+        db.execute(
+            "INSERT OR REPLACE INTO meta (key, value) VALUES (?, '1')",
+            (f"completed_logged:{row['id']}",),
+        )
+    db.commit()
+    log.info(
+        "inbox.completed_synced",
+        folded=folded,
+        uploads=len(finished),
+        completed=vault_cfg.completed_note,
+    )
+    return added + len(finished)
 
 
 async def _resolve_pdf_line(
