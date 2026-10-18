@@ -147,9 +147,16 @@ this app never writes `99 topics/` for PDFs. They arrive three ways:
   (404/403, not a PDF, too big) stays in the queue and is not fetched again;
   a timeout or server error is retried on the next poll. `POST /jobs` takes the
   same links, for the iOS Shortcut.
-- **The upload page.** `http://<host>:8090/upload` — choose or drop PDFs, enter the
-  admin key once (kept in that browser only). `POST /pdfs` takes the file as the
-  request body.
+- **The upload page.** `http://intake-digest.servers.zou/upload` — choose or drop
+  PDFs. It sits behind the homelab login (Traefik `forwardAuth`, see
+  `homelab-auth/README.md`): you sign in once like for the other apps and Traefik
+  adds the app's own admin key to the request, so the page has no key field. It
+  will not work at the container's own address, which has no login in front of
+  it. `POST /pdfs` takes the file as the request body; `GET /pdfs/<job>` is the
+  progress poll. The route lives in Traefik's `dynamic-config.yml` on the NAS
+  (untracked, as for the other apps): router `intakeDigest-upload` gates
+  `/upload` and `/pdfs*`, middleware `intakeDigest-key` holds the key, so
+  **rotating the admin key means updating that one line too**.
 - **A watched folder (optional, off by default).** Set `PDF_INPUT_DIR` (a NAS host
   path) in `.deploy.env` and it is mounted read-only at `/inbox` and scanned
   every 15 minutes. The originals there never move or change. `./deploy` never
