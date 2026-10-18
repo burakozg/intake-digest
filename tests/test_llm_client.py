@@ -111,9 +111,9 @@ def wrapped(cause: BaseException) -> InstructorRetryException:
 
 def _llm_call_rows(db) -> list[dict[str, Any]]:
     rows = db.execute(
-        "SELECT video_id, value, meta FROM metric_events WHERE kind = 'llm_call'"
+        "SELECT item_id, value, meta FROM metric_events WHERE kind = 'llm_call'"
     ).fetchall()
-    return [{"video_id": r["video_id"], "cost_usd": r["value"], **json.loads(r["meta"])} for r in rows]
+    return [{"video_id": r["item_id"], "cost_usd": r["value"], **json.loads(r["meta"])} for r in rows]
 
 
 class TestRootCause:

@@ -43,7 +43,7 @@ def db(tmp_path: Path):
     # note_names.video_id carries a foreign key to videos.id — a row must
     # exist first, same as real usage after pipeline/resolve.py's enqueue().
     conn.execute(
-        "INSERT INTO videos (id, video_id, url, canonical_url, created_at, updated_at) "
+        "INSERT INTO items (id, item_key, url, canonical_url, created_at, updated_at) "
         "VALUES (?, ?, 'u', 'u', 'now', 'now')",
         (ROW_ID, VID),
     )
@@ -165,7 +165,7 @@ class TestANoteAppears:
         assert note_path == "13 video-summaries/2026-08-20-a-video-about-ollama.md"
         assert transcript_path == "14 video-transcripts/2026-08-20-a-video-about-ollama.md"
 
-        row = db.execute("SELECT * FROM videos WHERE id = ?", (ROW_ID,)).fetchone()
+        row = db.execute("SELECT * FROM items WHERE id = ?", (ROW_ID,)).fetchone()
         assert row["note_path"] == note_path
         assert row["transcript_path"] == transcript_path
 
@@ -587,11 +587,11 @@ class TestWrittenAtIsWriteOnce:
 
         monkeypatch.setattr("video_digest.pipeline.write.iso_now", lambda: "2026-01-01T00:00:00+00:00")
         await write_video_note(db, vault, cfg, _meta(), _digest(), _transcript(), tier="T1")
-        first = db.execute("SELECT written_at, updated_at FROM videos WHERE id = ?", (ROW_ID,)).fetchone()
+        first = db.execute("SELECT written_at, updated_at FROM items WHERE id = ?", (ROW_ID,)).fetchone()
 
         monkeypatch.setattr("video_digest.pipeline.write.iso_now", lambda: "2026-09-09T00:00:00+00:00")
         await write_video_note(db, vault, cfg, _meta(), _digest(), _transcript(), tier="T1")
-        second = db.execute("SELECT written_at, updated_at FROM videos WHERE id = ?", (ROW_ID,)).fetchone()
+        second = db.execute("SELECT written_at, updated_at FROM items WHERE id = ?", (ROW_ID,)).fetchone()
 
         assert first["written_at"] == "2026-01-01T00:00:00+00:00"
         assert second["written_at"] == first["written_at"], "written_at must never move"

@@ -54,7 +54,7 @@ def _seed_video(db: Any, *, note_path: str | None, title: str = "A Video",
     created_at: str = "2026-10-10T08:00:00+00:00",
 ) -> None:
     db.execute(
-        "INSERT INTO videos (id, video_id, url, canonical_url, metadata, note_path, "
+        "INSERT INTO items (id, item_key, url, canonical_url, metadata, note_path, "
         "stage_resolve, stage_metadata, created_at, updated_at) "
         "VALUES (?, ?, 'u', 'u', ?, ?, 'done', 'done', ?, ?)",
         (f"youtube:{VID}", VID, json.dumps({"title": title}), note_path, created_at, created_at),
@@ -265,7 +265,7 @@ async def test_playlist_line_expands_to_one_bullet_per_note_in_completed(
     db = connect(tmp_path / "s.sqlite")
     for i, vid in enumerate(("aaa", "bbb")):
         db.execute(
-            "INSERT INTO videos (id, video_id, url, canonical_url, metadata, note_path, "
+            "INSERT INTO items (id, item_key, url, canonical_url, metadata, note_path, "
             "stage_resolve, stage_metadata, created_at, updated_at) "
             "VALUES (?, ?, 'u', 'u', ?, ?, 'done', 'done', 'now', 'now')",
             (f"youtube:{vid}", vid, json.dumps({"title": f"Vid {i}"}), f"13 video-summaries/{vid}.md"),

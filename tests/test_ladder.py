@@ -116,7 +116,7 @@ class TestNoUsableCaptions:
 
 
 class TestCaptionFetchFailureFallsBackToASR:
-    """A video kept permanently `stage_transcript = 'failed'` for a week
+    """A video kept permanently `stage_acquire = 'failed'` for a week
     (2026-09-23) after YouTube's timedtext CDN 429'd once: `fetch_subtitle_vtt`
     raising is not "this video has no captions", it is "captions are not
     obtainable right now" — and T2 (remote ASR) doesn't touch this endpoint

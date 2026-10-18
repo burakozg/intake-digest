@@ -120,12 +120,12 @@ _NOTE_PATH = re.compile(r"\[\[([^\]|]+)")
 
 def _line_day(db: sqlite3.Connection, line: str) -> str | None:
     """The request day of the video a completed-note line links to, from the
-    `videos` table via its note path; None when the line links nothing we know."""
+    `items` table via its note path; None when the line links nothing we know."""
     link = _NOTE_PATH.search(line)
     if link is None:
         return None
     row = db.execute(
-        "SELECT created_at FROM videos WHERE note_path = ?", (link.group(1),)
+        "SELECT created_at FROM items WHERE note_path = ?", (link.group(1),)
     ).fetchone()
     return str(row["created_at"])[:10] if row and row["created_at"] else None
 
@@ -163,7 +163,7 @@ def _group_completed(
 
 
 def _request_day(db: sqlite3.Connection, video_id: str) -> str | None:
-    row = db.execute("SELECT created_at FROM videos WHERE video_id = ?", (video_id,)).fetchone()
+    row = db.execute("SELECT created_at FROM items WHERE item_key = ?", (video_id,)).fetchone()
     return str(row["created_at"])[:10] if row and row["created_at"] else None
 
 
@@ -217,7 +217,7 @@ def _note_link(db: sqlite3.Connection, video_id: str) -> str | None:
     Matches the wikilink form the S5 writer uses on topic pages
     (`vault/write.py::_update_topic_page`) — full path, `.md` included."""
     row = db.execute(
-        "SELECT note_path, metadata FROM videos WHERE video_id = ?", (video_id,)
+        "SELECT note_path, metadata FROM items WHERE item_key = ?", (video_id,)
     ).fetchone()
     if row is None or not row["note_path"]:
         return None

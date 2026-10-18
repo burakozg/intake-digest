@@ -68,8 +68,8 @@ async def drain_pending_asr(
             break
 
         db.execute(
-            "UPDATE videos SET stage_transcript = 'done', transcript_tier = ?, "
-            "transcript_tier_degraded = ?, transcript_json = ?, asr_model = ?, "
+            "UPDATE items SET stage_acquire = 'done', transcript_tier = ?, "
+            "transcript_tier_degraded = ?, document_json = ?, asr_model = ?, "
             "asr_queued_at = NULL, updated_at = datetime('now') WHERE id = ?",
             (
                 acquired.tier,

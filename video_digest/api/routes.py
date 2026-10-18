@@ -154,11 +154,11 @@ async def create_job(body: JobRequest, request: Request) -> JobResponse:
 @api_router.get("/videos/{video_id}")
 async def get_video(video_id: str, request: Request) -> dict[str, object]:
     row = request.app.state.db.execute(
-        "SELECT * FROM videos WHERE video_id = ?", (video_id,)
+        "SELECT * FROM items WHERE item_key = ? AND kind = 'video'", (video_id,)
     ).fetchone()
     if row is None:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="unknown video_id")
-    return dict(row)
+    return _video_row(row)
 
 
 # ── /videos — the export a sibling service imports from (design §8) ────────
@@ -223,9 +223,10 @@ async def list_videos(
         since = _cursor_timestamp(since)
 
     sql = (
-        "SELECT id, video_id, adapter, note_path, transcript_path, written_at, updated_at, "
-        "metadata, digest FROM videos "
-        "WHERE stage_write = 'done' AND written_at IS NOT NULL AND digest IS NOT NULL"
+        "SELECT id, item_key, adapter, note_path, transcript_path, written_at, updated_at, "
+        "metadata, digest FROM items "
+        "WHERE kind = 'video' AND stage_write = 'done' AND written_at IS NOT NULL "
+        "AND digest IS NOT NULL"
     )
     params: list[object] = []
     if since is not None:
@@ -242,12 +243,12 @@ async def list_videos(
             digest = json.loads(row["digest"])
         except (json.JSONDecodeError, TypeError):
             # One malformed row must not fail the whole page for the importer.
-            log.warning("videos.row_skipped", video_id=row["video_id"])
+            log.warning("videos.row_skipped", video_id=row["item_key"])
             continue
         videos.append(
             {
                 "id": row["id"],
-                "video_id": row["video_id"],
+                "video_id": row["item_key"],
                 "adapter": row["adapter"],
                 "note_path": row["note_path"],
                 "transcript_path": row["transcript_path"],
@@ -271,9 +272,91 @@ async def list_videos(
     }
 
 
+@api_router.get("/items")
+async def list_items(
+    request: Request,
+    kind: str | None = None,
+    since: str | None = None,
+    since_id: str | None = None,
+    limit: int = Query(default=50, ge=1, le=_VIDEOS_PAGE_MAX),
+) -> dict[str, object]:
+    """`GET /videos` for every kind: finished summaries, newest first, with
+    the same `(written_at, id)` cursor. `kind` narrows to one kind; `/videos`
+    stays as the video-only view existing importers read."""
+    db: sqlite3.Connection = request.app.state.db
+    if since is not None:
+        since = _cursor_timestamp(since)
+
+    sql = (
+        "SELECT id, kind, item_key, adapter, note_path, written_at, updated_at, "
+        "metadata, digest FROM items "
+        "WHERE stage_write = 'done' AND written_at IS NOT NULL AND digest IS NOT NULL"
+    )
+    params: list[object] = []
+    if kind is not None:
+        sql += " AND kind = ?"
+        params.append(kind)
+    if since is not None:
+        sql += " AND (written_at < ? OR (written_at = ? AND id < ?))"
+        params += [since, since, since_id or ""]
+    sql += " ORDER BY written_at DESC, id DESC LIMIT ?"
+    params.append(limit)
+
+    items: list[dict[str, object]] = []
+    for row in db.execute(sql, params):
+        try:
+            metadata = json.loads(row["metadata"] or "{}")
+            digest = json.loads(row["digest"])
+        except (json.JSONDecodeError, TypeError):
+            log.warning("items.row_skipped", item_id=row["id"])
+            continue
+        items.append(
+            {
+                "id": row["id"],
+                "kind": row["kind"],
+                "item_key": row["item_key"],
+                "adapter": row["adapter"],
+                "note_path": row["note_path"],
+                "written_at": row["written_at"],
+                "updated_at": row["updated_at"],
+                "metadata": metadata,
+                "digest": digest,
+            }
+        )
+
+    last = items[-1] if items else None
+    return {
+        "items": items,
+        "count": len(items),
+        "next": (
+            {"since": last["written_at"], "since_id": last["id"]}
+            if last is not None and len(items) == limit
+            else None
+        ),
+    }
+
+
 # ── /jobs/{id} — stage status (design §8) ─────────────────────────────────
 
 _STAGES = ("resolve", "metadata", "transcript", "normalize", "summarize", "write")
+
+#: The API still calls S2 "transcript" (it is a video endpoint, and the Shortcut
+#: reads that key); the column is the kind-neutral `stage_acquire` since
+#: schema version 3.
+_STAGE_COLUMN = {"transcript": "stage_acquire"}
+
+
+#: Column renames since schema version 3, mapped back to the names this API
+#: has always returned, so a consumer of `GET /videos/{id}` sees no change.
+_LEGACY_VIDEO_KEYS = {
+    "item_key": "video_id",
+    "stage_acquire": "stage_transcript",
+    "document_json": "transcript_json",
+}
+
+
+def _video_row(row: sqlite3.Row) -> dict[str, object]:
+    return {_LEGACY_VIDEO_KEYS.get(key, key): row[key] for key in row.keys()}  # noqa: SIM118
 
 
 @api_router.get("/jobs/{job_id}")
@@ -285,18 +368,18 @@ async def get_job(job_id: str, request: Request) -> dict[str, object]:
     job = db.execute("SELECT * FROM jobs WHERE id = ?", (job_id,)).fetchone()
     if job is None:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="unknown job_id")
-    video = db.execute("SELECT * FROM videos WHERE id = ?", (job["video_id"],)).fetchone()
+    video = db.execute("SELECT * FROM items WHERE id = ?", (job["item_id"],)).fetchone()
     if video is None:  # a job always has its video row
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="job has no video row")
 
     stage_errors = json.loads(video["stage_errors"] or "{}")
     return {
         "job_id": job_id,
-        "video_id": video["video_id"],
+        "video_id": video["item_key"],
         "status": job["status"],
         "created_at": job["created_at"],
         "updated_at": job["updated_at"],
-        "stages": {name: video[f"stage_{name}"] for name in _STAGES},
+        "stages": {name: video[_STAGE_COLUMN.get(name, f"stage_{name}")] for name in _STAGES},
         "stage_errors": stage_errors,
         "last_error": video["last_error"],
         "transcript_tier": video["transcript_tier"],
@@ -348,14 +431,17 @@ async def metrics(request: Request) -> dict[str, object]:
     def _counts(sql: str) -> dict[str, int]:
         return {str(k): int(n) for k, n in db.execute(sql).fetchall()}
 
-    write_stage = _counts("SELECT stage_write, COUNT(*) FROM videos GROUP BY stage_write")
+    write_stage = _counts(
+        "SELECT stage_write, COUNT(*) FROM items WHERE kind = 'video' GROUP BY stage_write"
+    )
     tiers = _counts(
-        "SELECT COALESCE(transcript_tier, 'none'), COUNT(*) FROM videos GROUP BY transcript_tier"
+        "SELECT COALESCE(transcript_tier, 'none'), COUNT(*) FROM items "
+        "WHERE kind = 'video' GROUP BY transcript_tier"
     )
     jobs = _counts("SELECT status, COUNT(*) FROM jobs GROUP BY status")
 
     asr_seconds = 0
-    for (md,) in db.execute("SELECT metadata FROM videos WHERE transcript_tier = 'T2'"):
+    for (md,) in db.execute("SELECT metadata FROM items WHERE transcript_tier = 'T2'"):
         with contextlib.suppress(json.JSONDecodeError, TypeError, ValueError):
             asr_seconds += int(json.loads(md or "{}").get("duration_s") or 0)
 
@@ -380,7 +466,7 @@ async def metrics(request: Request) -> dict[str, object]:
         "write_stage": write_stage,
         "transcript_tiers": tiers,
         "pending_asr": db.execute(
-            "SELECT COUNT(*) FROM videos WHERE asr_queued_at IS NOT NULL"
+            "SELECT COUNT(*) FROM items WHERE asr_queued_at IS NOT NULL"
         ).fetchone()[0],
         "asr_audio_minutes": round(asr_seconds / 60, 1),
         "jobs": jobs,

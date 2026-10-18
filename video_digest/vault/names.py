@@ -12,7 +12,7 @@ from ..sanitize import slugify
 
 def get_note_filename(db: sqlite3.Connection, video_id: str) -> str | None:
     row = db.execute(
-        "SELECT filename FROM note_names WHERE video_id = ?", (video_id,)
+        "SELECT filename FROM note_names WHERE item_id = ?", (video_id,)
     ).fetchone()
     return str(row["filename"]) if row else None
 
@@ -37,7 +37,7 @@ def resolve_note_filename(
         suffix += 1
 
     db.execute(
-        "INSERT INTO note_names (video_id, filename) VALUES (?, ?)", (video_id, candidate)
+        "INSERT INTO note_names (item_id, filename) VALUES (?, ?)", (video_id, candidate)
     )
     db.commit()
     return candidate

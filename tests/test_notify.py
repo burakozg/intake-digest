@@ -106,7 +106,7 @@ async def test_asr_stale_names_the_parked_videos() -> None:
     with respx.mock:
         route = respx.post(_ENDPOINT).mock(return_value=httpx.Response(200))
         await Notifier(_enabled()).asr_stale(
-            [{"video_id": "aaa"}, {"video_id": "bbb"}]
+            [{"item_key": "aaa"}, {"item_key": "bbb"}]
         )
     body = route.calls.last.request.content.decode()
     assert "aaa" in body and "bbb" in body

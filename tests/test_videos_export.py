@@ -87,8 +87,8 @@ def _seed(
 ) -> str:
     row_id = f"youtube:{video_id}"
     app.state.db.execute(
-        "INSERT INTO videos (id, video_id, url, canonical_url, metadata, digest, "
-        "stage_write, written_at, transcript_json, note_path, created_at, updated_at) "
+        "INSERT INTO items (id, item_key, url, canonical_url, metadata, digest, "
+        "stage_write, written_at, document_json, note_path, created_at, updated_at) "
         "VALUES (?, ?, 'u', 'u', ?, ?, ?, ?, ?, ?, ?, ?)",
         (
             row_id,

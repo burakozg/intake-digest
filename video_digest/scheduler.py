@@ -9,6 +9,7 @@ of them once the process is busy again.
 from __future__ import annotations
 
 import sqlite3
+from collections.abc import Awaitable, Callable
 
 from apscheduler.schedulers.asyncio import AsyncIOScheduler
 from apscheduler.triggers.cron import CronTrigger
@@ -20,6 +21,7 @@ from .notify import Notifier
 from .pipeline.asr_drain import alert_on_stale_pending_asr, drain_pending_asr
 from .pipeline.cleanup import sweep_orphaned_media
 from .pipeline.inbox import poll_inbox
+from .pipeline.kinds import kind_names
 from .pipeline.runner import run_due_jobs
 
 log = get_logger(__name__)
@@ -43,11 +45,14 @@ def build_scheduler(settings: Settings, db: sqlite3.Connection) -> AsyncIOSchedu
     llm = LLMClient(settings, db)
     vault = LiveSyncVault(settings.vault, settings.vault_password())
 
-    async def _run_jobs() -> None:
-        try:
-            await run_due_jobs(db, settings, llm=llm, vault=vault, notifier=notifier)
-        except Exception:
-            log.exception("scheduler.run_due_jobs_failed")
+    def _runner_for(kind: str) -> Callable[[], Awaitable[None]]:
+        async def _run_jobs() -> None:
+            try:
+                await run_due_jobs(db, settings, llm=llm, vault=vault, notifier=notifier, kind=kind)
+            except Exception:
+                log.exception("scheduler.run_due_jobs_failed", kind=kind)
+
+        return _run_jobs
 
     async def _drain() -> None:
         try:
@@ -74,20 +79,23 @@ def build_scheduler(settings: Settings, db: sqlite3.Connection) -> AsyncIOSchedu
                 # design §5 S2: "alert on age, not on failure". Logged at
                 # warning so it surfaces in `docker logs` even with
                 # notifications disabled; the notifier no-ops when it is.
-                video_ids = [r["video_id"] for r in stale]
+                video_ids = [r["item_key"] for r in stale]
                 log.warning("asr.stale_pending", count=len(stale), video_ids=video_ids)
                 await notifier.asr_stale(stale)
         except Exception:
             log.exception("scheduler.stale_check_failed")
 
-    scheduler.add_job(
-        _run_jobs,
-        trigger=IntervalTrigger(seconds=settings.scheduler.job_poll_seconds),
-        id="job_runner",
-        max_instances=1,
-        coalesce=True,
-        misfire_grace_time=MISFIRE_GRACE_S,
-    )
+    # One runner per kind: each stays sequential (max_instances=1), but a slow
+    # kind cannot hold up the others' queues.
+    for kind in kind_names():
+        scheduler.add_job(
+            _runner_for(kind),
+            trigger=IntervalTrigger(seconds=settings.scheduler.job_poll_seconds),
+            id=f"job_runner:{kind}",
+            max_instances=1,
+            coalesce=True,
+            misfire_grace_time=MISFIRE_GRACE_S,
+        )
     scheduler.add_job(
         _drain,
         trigger=IntervalTrigger(minutes=settings.transcription.asr_poll_interval_minutes),

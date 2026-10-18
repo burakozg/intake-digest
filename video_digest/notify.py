@@ -84,7 +84,7 @@ class Notifier:
         shut for two days, not a broken pipeline" (design §5 S2)."""
         if not rows:
             return
-        ids = ", ".join(str(r["video_id"]) for r in rows)
+        ids = ", ".join(str(r["item_key"]) for r in rows)
         await self.send(
             f"video-digest: {len(rows)} video(s) waiting on ASR",
             f"Parked longer than the staleness window: {ids}",

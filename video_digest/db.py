@@ -18,11 +18,16 @@ from pathlib import Path
 STAGES: tuple[str, ...] = ("resolve", "metadata", "transcript", "normalize", "summarize", "write")
 
 SCHEMA = """
-CREATE TABLE IF NOT EXISTS videos (
-  -- "<adapter>:<video_id>" (design §6's `video:youtube:{video_id}`, without
-  -- the redundant leading "video:" — the table name already says that).
+CREATE TABLE IF NOT EXISTS items (
+  -- "<adapter>:<item_key>" (design §6's `video:youtube:{video_id}`, without
+  -- the redundant leading kind). Unique across kinds because adapters differ.
   id TEXT PRIMARY KEY,
-  video_id TEXT NOT NULL,
+  -- What sort of thing this row is: 'video' | 'pdf' | ... Selects the
+  -- pipeline.kinds implementation that acquires, summarises and renders it.
+  kind TEXT NOT NULL DEFAULT 'video',
+  -- The adapter's own identifier: a YouTube video id, a Wired slug, a PDF's
+  -- content SHA-256. Was `videos.video_id` before schema version 3.
+  item_key TEXT NOT NULL,
   -- The source *adapter* (design §1.1 — youtube first, others later without
   -- renaming the service). Not to be confused with `origin` below.
   adapter TEXT NOT NULL DEFAULT 'youtube',
@@ -38,7 +43,9 @@ CREATE TABLE IF NOT EXISTS videos (
 
   stage_resolve TEXT NOT NULL DEFAULT 'pending',
   stage_metadata TEXT NOT NULL DEFAULT 'pending',
-  stage_transcript TEXT NOT NULL DEFAULT 'pending',
+  -- 'acquire' is S2: a video's transcript, a PDF's page text. Was
+  -- `stage_transcript` before schema version 3.
+  stage_acquire TEXT NOT NULL DEFAULT 'pending',
   stage_normalize TEXT NOT NULL DEFAULT 'pending',
   stage_summarize TEXT NOT NULL DEFAULT 'pending',
   stage_write TEXT NOT NULL DEFAULT 'pending',
@@ -46,7 +53,8 @@ CREATE TABLE IF NOT EXISTS videos (
 
   transcript_tier TEXT,                          -- T0 | T1 | T2
   transcript_tier_degraded INTEGER NOT NULL DEFAULT 0,
-  transcript_json TEXT,          -- JSON Transcript, staged for S4/S5 after S2/S3
+  document_json TEXT,            -- JSON [{start_s, text}], staged for S4/S5 after S2/S3
+                                 -- (was `transcript_json` before schema version 3)
   asr_model TEXT,                 -- set when transcript_tier == T2
   transcript_path TEXT,        -- vault path under transcripts_dir
   note_path TEXT,               -- vault path under notes_dir
@@ -76,21 +84,21 @@ CREATE TABLE IF NOT EXISTS videos (
   created_at TEXT NOT NULL,
   updated_at TEXT NOT NULL
 );
-CREATE UNIQUE INDEX IF NOT EXISTS idx_videos_video_id ON videos(video_id, adapter);
-CREATE INDEX IF NOT EXISTS idx_videos_asr_queued
-  ON videos(asr_queued_at) WHERE asr_queued_at IS NOT NULL;
+CREATE UNIQUE INDEX IF NOT EXISTS idx_items_key ON items(item_key, adapter);
+CREATE INDEX IF NOT EXISTS idx_items_asr_queued
+  ON items(asr_queued_at) WHERE asr_queued_at IS NOT NULL;
 -- `GET /videos` orders and pages by exactly this pair (id breaks a tie, since
 -- written_at is not unique — see its comment above). IF NOT EXISTS, and this
 -- whole script runs on every connect, so an existing database gains it
 -- without a migration step.
-CREATE INDEX IF NOT EXISTS idx_videos_written
-  ON videos(written_at, id) WHERE written_at IS NOT NULL;
+CREATE INDEX IF NOT EXISTS idx_items_written
+  ON items(written_at, id) WHERE written_at IS NOT NULL;
 
 -- Filename pinning (obsidian-vault-writer skill §2 "the filename is part of
 -- the contract"): derived once, stored, never recomputed. A title correction
 -- must not move the file and strand every existing wikilink.
 CREATE TABLE IF NOT EXISTS note_names (
-  video_id TEXT PRIMARY KEY REFERENCES videos(id) ON DELETE CASCADE,
+  item_id TEXT PRIMARY KEY REFERENCES items(id) ON DELETE CASCADE,
   filename TEXT NOT NULL UNIQUE      -- relative to vault.notes_dir, no extension
 );
 
@@ -105,13 +113,13 @@ CREATE TABLE IF NOT EXISTS topic_note_names (
 
 CREATE TABLE IF NOT EXISTS jobs (
   id TEXT PRIMARY KEY,
-  video_id TEXT NOT NULL REFERENCES videos(id),
+  item_id TEXT NOT NULL REFERENCES items(id),
   force INTEGER NOT NULL DEFAULT 0,
   status TEXT NOT NULL DEFAULT 'queued',
   created_at TEXT NOT NULL,
   updated_at TEXT NOT NULL
 );
-CREATE INDEX IF NOT EXISTS idx_jobs_video ON jobs(video_id);
+CREATE INDEX IF NOT EXISTS idx_jobs_item ON jobs(item_id);
 
 -- Counts by stage, tier distribution, ASR minutes, token spend (design §8
 -- /metrics — "if T2 is firing on 80% of videos, either the heuristic is
@@ -119,7 +127,7 @@ CREATE INDEX IF NOT EXISTS idx_jobs_video ON jobs(video_id);
 CREATE TABLE IF NOT EXISTS metric_events (
   id INTEGER PRIMARY KEY AUTOINCREMENT,
   kind TEXT NOT NULL,           -- 'transcript_tier' | 'asr_minutes' | 'llm_tokens' | ...
-  video_id TEXT,
+  item_id TEXT,
   value REAL NOT NULL DEFAULT 1,
   meta TEXT,                    -- JSON
   created_at TEXT NOT NULL
@@ -130,7 +138,7 @@ CREATE TABLE IF NOT EXISTS meta (key TEXT PRIMARY KEY, value TEXT);
 -- keys: schema_version, installed_yt_dlp_version, last_cleanup_run
 """
 
-SCHEMA_VERSION = 2
+SCHEMA_VERSION = 3
 
 
 def _has_column(conn: sqlite3.Connection, table: str, column: str) -> bool:
@@ -140,7 +148,7 @@ def _has_column(conn: sqlite3.Connection, table: str, column: str) -> bool:
 
 
 def _migrate_2_written_at(conn: sqlite3.Connection) -> None:
-    """`videos.written_at` — when the note was FIRST written (see SCHEMA).
+    """`written_at` — when the note was FIRST written (see SCHEMA).
 
     Backfilled from `created_at`, not `updated_at`: `created_at` is provably
     never mutated (pipeline/resolve.py's upserts set `updated_at` and leave it
@@ -153,12 +161,95 @@ def _migrate_2_written_at(conn: sqlite3.Connection) -> None:
     that may share a second — which is why `GET /videos` pages on the
     `(written_at, id)` pair rather than the timestamp alone.
     """
+    # Runs against the pre-version-3 table name: this step predates the rename.
+    if not _table_exists(conn, "videos"):
+        return
     if not _has_column(conn, "videos", "written_at"):
         conn.execute("ALTER TABLE videos ADD COLUMN written_at TEXT")
     conn.execute(
         "UPDATE videos SET written_at = created_at "
         "WHERE written_at IS NULL AND stage_write = 'done'"
     )
+
+
+def _table_exists(conn: sqlite3.Connection, table: str) -> bool:
+    return (
+        conn.execute(
+            "SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = ?", (table,)
+        ).fetchone()
+        is not None
+    )
+
+
+#: Version 3 renames, as (table, old column, new column). Child tables are
+#: listed under their post-rename names where the table itself was renamed.
+_V3_COLUMN_RENAMES: tuple[tuple[str, str, str], ...] = (
+    ("items", "video_id", "item_key"),
+    ("items", "stage_transcript", "stage_acquire"),
+    ("items", "transcript_json", "document_json"),
+    ("jobs", "video_id", "item_id"),
+    ("note_names", "video_id", "item_id"),
+    ("metric_events", "video_id", "item_id"),
+)
+
+#: Indexes whose names embedded the old table; SCHEMA recreates them under
+#: their new names, so the old ones must go or every row is indexed twice.
+_V3_DROPPED_INDEXES: tuple[str, ...] = (
+    "idx_videos_video_id",
+    "idx_videos_asr_queued",
+    "idx_videos_written",
+    "idx_jobs_video",
+)
+
+
+def _migrate_3_items(conn: sqlite3.Connection) -> None:
+    """`videos` becomes `items`, with a `kind` column — the queue is no longer
+    video-only (a PDF is the second kind).
+
+    In place, by `RENAME`, not by rebuilding the table: SQLite rewrites the
+    foreign keys in `jobs` and `note_names` itself, every row keeps its rowid,
+    and nothing is copied, so there is no window in which rows exist twice or
+    not at all. Every statement is guarded, and the whole step is one
+    transaction, so a crash mid-way leaves the version-2 layout intact and the
+    step safe to re-run.
+
+    A database that has no `videos` table (a fresh one, or one already
+    migrated) is left alone.
+    """
+    if not _table_exists(conn, "videos"):
+        return
+    # sqlite3 opens an implicit transaction before a DML statement; an earlier
+    # step may have left one open, and BEGIN inside it is an error.
+    conn.commit()
+    conn.execute("BEGIN")
+    try:
+        conn.execute("ALTER TABLE videos RENAME TO items")
+        if not _has_column(conn, "items", "kind"):
+            conn.execute("ALTER TABLE items ADD COLUMN kind TEXT NOT NULL DEFAULT 'video'")
+        for table, old, new in _V3_COLUMN_RENAMES:
+            if _has_column(conn, table, old) and not _has_column(conn, table, new):
+                conn.execute(f"ALTER TABLE {table} RENAME COLUMN {old} TO {new}")
+        for index in _V3_DROPPED_INDEXES:
+            conn.execute(f"DROP INDEX IF EXISTS {index}")
+        conn.execute("COMMIT")
+    except BaseException:
+        conn.execute("ROLLBACK")
+        raise
+
+
+def _upgrade_legacy_layout(conn: sqlite3.Connection) -> None:
+    """Bring a pre-version-3 database to the `items` layout *before* `SCHEMA`
+    runs. `SCHEMA` is `CREATE ... IF NOT EXISTS` on every connect, so run
+    against an old database first it would create an empty `items` beside
+    `videos` and the rename would then have nothing to rename into.
+
+    Applies the earlier step it depends on (`written_at`) as well, because
+    `SCHEMA`'s `idx_items_written` index needs that column to exist.
+    """
+    if _table_exists(conn, "videos") and not _table_exists(conn, "items"):
+        _migrate_2_written_at(conn)
+        conn.commit()
+        _migrate_3_items(conn)
 
 
 #: Forward-only migrations, keyed by the schema version each one PRODUCES.
@@ -173,6 +264,7 @@ def _migrate_2_written_at(conn: sqlite3.Connection) -> None:
 #: that checks first.
 _MIGRATIONS: dict[int, str | Callable[[sqlite3.Connection], None]] = {
     2: _migrate_2_written_at,
+    3: _migrate_3_items,
 }
 
 
@@ -206,6 +298,7 @@ def connect(path: Path) -> sqlite3.Connection:
     # reader proceed without waiting on an in-progress writer (vault_ask/db.py
     # carries the same reasoning against the same class of NAS deployment).
     conn.execute("PRAGMA journal_mode = WAL")
+    _upgrade_legacy_layout(conn)
     conn.executescript(SCHEMA)
     conn.execute(
         "INSERT OR IGNORE INTO meta (key, value) VALUES ('schema_version', ?)",

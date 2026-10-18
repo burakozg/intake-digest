@@ -2,7 +2,7 @@
 ASR) with `pending_asr` semantics when neither is usable.
 
 `pending_asr` is a first-class state, not an error (design §5 S2): when the
-worker is unreachable, this parks the job at `stage_transcript = 'pending'`
+worker is unreachable, this parks the job at `stage_acquire = 'pending'`
 with `asr_queued_at` set and returns without touching the retry-attempt
 counter — a sleeping laptop must cost a delay, never a failed video. The
 drain job (`pipeline/asr_drain.py`, scheduled) works the queue once the
@@ -158,7 +158,7 @@ def park_pending_asr(db: sqlite3.Connection, row_id: str) -> None:
     to fail one retry would never trip the alert.
     """
     db.execute(
-        "UPDATE videos SET stage_transcript = 'pending', "
+        "UPDATE items SET stage_acquire = 'pending', "
         "asr_queued_at = COALESCE(asr_queued_at, ?), updated_at = ? WHERE id = ?",
         (iso_now(), iso_now(), row_id),
     )
@@ -168,14 +168,14 @@ def park_pending_asr(db: sqlite3.Connection, row_id: str) -> None:
 
 def pending_asr_rows(db: sqlite3.Connection) -> list[sqlite3.Row]:
     rows: list[sqlite3.Row] = db.execute(
-        "SELECT * FROM videos WHERE asr_queued_at IS NOT NULL ORDER BY asr_queued_at ASC"
+        "SELECT * FROM items WHERE asr_queued_at IS NOT NULL ORDER BY asr_queued_at ASC"
     ).fetchall()
     return rows
 
 
 def clear_pending_asr(db: sqlite3.Connection, row_id: str) -> None:
     db.execute(
-        "UPDATE videos SET asr_queued_at = NULL, updated_at = ? WHERE id = ?",
+        "UPDATE items SET asr_queued_at = NULL, updated_at = ? WHERE id = ?",
         (iso_now(), row_id),
     )
     db.commit()
@@ -189,7 +189,7 @@ def stale_pending_asr(db: sqlite3.Connection, *, stale_hours: int) -> list[dict[
 
     cutoff = (datetime.now(UTC) - timedelta(hours=stale_hours)).isoformat()
     rows = db.execute(
-        "SELECT id, video_id, asr_queued_at FROM videos "
+        "SELECT id, item_key, asr_queued_at FROM items "
         "WHERE asr_queued_at IS NOT NULL AND asr_queued_at < ? ORDER BY asr_queued_at ASC",
         (cutoff,),
     ).fetchall()

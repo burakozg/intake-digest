@@ -57,7 +57,7 @@ def count_topic_mentions(db: sqlite3.Connection, topic_key: str) -> int:
     a second source of truth that a missed update could drift from.
     """
     count = 0
-    for row in db.execute("SELECT digest FROM videos WHERE digest IS NOT NULL"):
+    for row in db.execute("SELECT digest FROM items WHERE digest IS NOT NULL"):
         try:
             digest = json.loads(row["digest"])
         except (json.JSONDecodeError, TypeError):
@@ -274,7 +274,7 @@ async def write_video_note(
     `vault/names.py` and never recomputed, so re-runs — a re-summarise, a
     template change — always land on the same file.
     """
-    # note_names.video_id carries a foreign key to videos.id (the
+    # note_names.item_id carries a foreign key to items.id (the
     # "<adapter>:<video_id>" composite pipeline/resolve.py uses as its
     # primary key), not the bare video id — a row must already exist there.
     row_id = f"{adapter or meta.adapter}:{meta.video_id}"
@@ -330,7 +330,7 @@ async def write_video_note(
         # race to reason about. It is the ordering key `GET /videos` exports
         # by — see db.py's SCHEMA. This statement is on both the pipeline path
         # and the rewrite path, so this one place covers both.
-        "UPDATE videos SET note_path = ?, transcript_path = ?, "
+        "UPDATE items SET note_path = ?, transcript_path = ?, "
         "written_at = COALESCE(written_at, ?), updated_at = ? WHERE id = ?",
         (note_path, transcript_path, now, now, row_id),
     )

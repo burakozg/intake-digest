@@ -65,7 +65,7 @@ class TestHappyPath:
         assert results[0].status == "queued_for_transcription"
         assert results[0].job_id is not None  # still a real, runnable job
 
-        row = db.execute("SELECT * FROM videos WHERE video_id = ?", (VID,)).fetchone()
+        row = db.execute("SELECT * FROM items WHERE item_key = ?", (VID,)).fetchone()
         assert row["stage_metadata"] == "done"
         assert row["origin"] == "manual"
 
@@ -87,12 +87,12 @@ class TestHappyPath:
         results = enqueue(db, cfg, URL, force=True, _fetch=lambda u: _meta(title="New Title"))
 
         assert results[0].status == "created"
-        row = db.execute("SELECT * FROM videos WHERE video_id = ?", (VID,)).fetchone()
+        row = db.execute("SELECT * FROM items WHERE item_key = ?", (VID,)).fetchone()
         assert "New Title" in row["metadata"]
 
     def test_origin_is_recorded(self, db, cfg) -> None:
         enqueue(db, cfg, URL, origin="inbox", _fetch=lambda u: _meta())
-        row = db.execute("SELECT * FROM videos WHERE video_id = ?", (VID,)).fetchone()
+        row = db.execute("SELECT * FROM items WHERE item_key = ?", (VID,)).fetchone()
         assert row["origin"] == "inbox"
 
 
@@ -105,7 +105,7 @@ class TestRejection:
         assert results[0].status == "rejected"
         assert results[0].rejected_reason == "too_long"
 
-        row = db.execute("SELECT * FROM videos WHERE video_id = ?", (VID,)).fetchone()
+        row = db.execute("SELECT * FROM items WHERE item_key = ?", (VID,)).fetchone()
         assert row["stage_metadata"] == "failed"
         assert "too_long" in row["stage_errors"]
 
@@ -130,7 +130,7 @@ class TestRejection:
 
         results = enqueue(db, cfg, "https://example.com/not-youtube", _fetch=fetch)
         assert results[0].status == "rejected"
-        assert db.execute("SELECT COUNT(*) FROM videos").fetchone()[0] == 0
+        assert db.execute("SELECT COUNT(*) FROM items").fetchone()[0] == 0
 
 
 class TestPlaylist:
@@ -154,7 +154,7 @@ class TestPlaylist:
         )
         assert len(results) == 3
         assert {r.status for r in results} == {"created"}
-        assert db.execute("SELECT COUNT(*) FROM videos").fetchone()[0] == 3
+        assert db.execute("SELECT COUNT(*) FROM items").fetchone()[0] == 3
 
 
 class TestFallbackForUnrecognisedShapes:

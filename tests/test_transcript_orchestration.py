@@ -316,7 +316,7 @@ class TestPendingAsrBookkeeping:
     def test_park_sets_state_without_touching_attempts(self, tmp_path: Path) -> None:
         db = connect(tmp_path / "state.sqlite")
         db.execute(
-            "INSERT INTO videos (id, video_id, url, canonical_url, created_at, updated_at) "
+            "INSERT INTO items (id, item_key, url, canonical_url, created_at, updated_at) "
             "VALUES (?, ?, 'u', 'u', 'now', 'now')",
             (ROW_ID, VID),
         )
@@ -324,8 +324,8 @@ class TestPendingAsrBookkeeping:
 
         park_pending_asr(db, ROW_ID)
 
-        row = db.execute("SELECT * FROM videos WHERE id = ?", (ROW_ID,)).fetchone()
-        assert row["stage_transcript"] == "pending"
+        row = db.execute("SELECT * FROM items WHERE id = ?", (ROW_ID,)).fetchone()
+        assert row["stage_acquire"] == "pending"
         assert row["asr_queued_at"] is not None
         assert row["attempts"] == "{}"  # untouched
 
@@ -333,7 +333,7 @@ class TestPendingAsrBookkeeping:
         db = connect(tmp_path / "state.sqlite")
         for vid in ("a", "b"):
             db.execute(
-                "INSERT INTO videos (id, video_id, url, canonical_url, created_at, updated_at) "
+                "INSERT INTO items (id, item_key, url, canonical_url, created_at, updated_at) "
                 "VALUES (?, ?, 'u', 'u', 'now', 'now')",
                 (f"youtube:{vid}", vid),
             )
@@ -341,12 +341,12 @@ class TestPendingAsrBookkeeping:
         park_pending_asr(db, "youtube:a")
 
         rows = pending_asr_rows(db)
-        assert [r["video_id"] for r in rows] == ["a"]
+        assert [r["item_key"] for r in rows] == ["a"]
 
     def test_clear_removes_the_park(self, tmp_path: Path) -> None:
         db = connect(tmp_path / "state.sqlite")
         db.execute(
-            "INSERT INTO videos (id, video_id, url, canonical_url, created_at, updated_at) "
+            "INSERT INTO items (id, item_key, url, canonical_url, created_at, updated_at) "
             "VALUES (?, ?, 'u', 'u', 'now', 'now')",
             (ROW_ID, VID),
         )
@@ -358,18 +358,18 @@ class TestPendingAsrBookkeeping:
     def test_stale_pending_alerts_on_age(self, tmp_path: Path) -> None:
         db = connect(tmp_path / "state.sqlite")
         db.execute(
-            "INSERT INTO videos (id, video_id, url, canonical_url, "
+            "INSERT INTO items (id, item_key, url, canonical_url, "
             "asr_queued_at, created_at, updated_at) VALUES (?, ?, 'u', 'u', ?, 'now', 'now')",
             (ROW_ID, VID, "2020-01-01T00:00:00+00:00"),
         )
         db.commit()
         stale = stale_pending_asr(db, stale_hours=48)
-        assert [r["video_id"] for r in stale] == [VID]
+        assert [r["item_key"] for r in stale] == [VID]
 
     def test_recently_parked_is_not_stale(self, tmp_path: Path) -> None:
         db = connect(tmp_path / "state.sqlite")
         db.execute(
-            "INSERT INTO videos (id, video_id, url, canonical_url, created_at, updated_at) "
+            "INSERT INTO items (id, item_key, url, canonical_url, created_at, updated_at) "
             "VALUES (?, ?, 'u', 'u', 'now', 'now')",
             (ROW_ID, VID),
         )

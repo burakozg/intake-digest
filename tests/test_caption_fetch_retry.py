@@ -1,7 +1,7 @@
 """`_get_with_retry` (sources/youtube.py): the timedtext CDN 429s under
 ordinary use, with no account or key to fall back on — a single failed GET
 must not read as "no captions for this video" (the bug that let two videos
-sit permanently `stage_transcript = 'failed'` after one rate-limited attempt,
+sit permanently `stage_acquire = 'failed'` after one rate-limited attempt,
 2026-09-23). Retries are bounded and only for transient statuses; anything
 else fails immediately since retrying the same signed URL cannot fix it.
 """

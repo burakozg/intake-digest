@@ -93,7 +93,7 @@ def enqueue(
     _fetch: FetchMetadataFn | None = None,
     _expand: ExpandPlaylistFn | None = None,
 ) -> list[EnqueueResult]:
-    """Resolve `url`, deduplicate against `videos`, fetch metadata, and store
+    """Resolve `url`, deduplicate against `items`, fetch metadata, and store
     a row. Returns one result per video — more than one only for a bare
     playlist URL (design §5 S0).
     """
@@ -189,11 +189,11 @@ def _resolve_one(
 
     db.execute(
         """
-        INSERT INTO videos (
-            id, video_id, adapter, origin, url, canonical_url, metadata,
+        INSERT INTO items (
+            id, kind, item_key, adapter, origin, url, canonical_url, metadata,
             stage_resolve, stage_metadata, force_asr, created_at, updated_at
-        ) VALUES (?, ?, ?, ?, ?, ?, ?, 'done', 'done', ?, ?, ?)
-        ON CONFLICT(video_id, adapter) DO UPDATE SET
+        ) VALUES (?, 'video', ?, ?, ?, ?, ?, ?, 'done', 'done', ?, ?, ?)
+        ON CONFLICT(item_key, adapter) DO UPDATE SET
             metadata = excluded.metadata,
             stage_resolve = 'done',
             stage_metadata = 'done',
@@ -214,7 +214,7 @@ def _resolve_one(
         ),
     )
     db.execute(
-        "INSERT INTO jobs (id, video_id, force, status, created_at, updated_at) "
+        "INSERT INTO jobs (id, item_id, force, status, created_at, updated_at) "
         "VALUES (?, ?, ?, 'queued', ?, ?)",
         (job_id, row_id, int(force), now, now),
     )
@@ -239,7 +239,7 @@ def _find_existing(
     db: sqlite3.Connection, adapter: str, video_id: str
 ) -> sqlite3.Row | None:
     row: sqlite3.Row | None = db.execute(
-        "SELECT * FROM videos WHERE adapter = ? AND video_id = ?", (adapter, video_id)
+        "SELECT * FROM items WHERE adapter = ? AND item_key = ?", (adapter, video_id)
     ).fetchone()
     return row
 
@@ -260,12 +260,12 @@ def _store_rejection(
     now = iso_now()
     db.execute(
         """
-        INSERT INTO videos (
-            id, video_id, adapter, origin, url, canonical_url,
+        INSERT INTO items (
+            id, kind, item_key, adapter, origin, url, canonical_url,
             stage_resolve, stage_metadata, stage_errors, last_error,
             created_at, updated_at
-        ) VALUES (?, ?, ?, ?, ?, ?, 'done', 'failed', ?, ?, ?, ?)
-        ON CONFLICT(video_id, adapter) DO UPDATE SET
+        ) VALUES (?, 'video', ?, ?, ?, ?, ?, 'done', 'failed', ?, ?, ?, ?)
+        ON CONFLICT(item_key, adapter) DO UPDATE SET
             stage_metadata = 'failed',
             stage_errors = excluded.stage_errors,
             last_error = excluded.last_error,
@@ -307,13 +307,13 @@ def _metadata_dict(meta: VideoMetadata) -> dict[str, object]:
 
 def metadata_from_row(row: sqlite3.Row) -> VideoMetadata:
     """Rebuild the S1 `VideoMetadata` from the JSON `_metadata_dict` stored on
-    the `videos` row. The inverse of `_metadata_dict` — used by every stage
+    the `items` row. The inverse of `_metadata_dict` — used by every stage
     that runs long after S1 (the ASR drain job, the job runner) and cannot
     assume the original in-memory object is still around.
     """
     stored = json.loads(row["metadata"] or "{}")
     return VideoMetadata(
-        video_id=row["video_id"],
+        video_id=row["item_key"],
         title=stored.get("title", ""),
         channel=stored.get("channel", ""),
         channel_id=stored.get("channel_id", ""),

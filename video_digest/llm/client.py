@@ -416,7 +416,7 @@ class LLMClient:
             return
         try:
             self._db.execute(
-                "INSERT INTO metric_events (kind, video_id, value, meta, created_at) "
+                "INSERT INTO metric_events (kind, item_id, value, meta, created_at) "
                 "VALUES ('llm_call', ?, ?, ?, ?)",
                 (
                     meta.video_id,

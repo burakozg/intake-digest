@@ -45,9 +45,9 @@ def _seed(
     video_id: str,
     *,
     metadata: dict | None = None,
-    transcript_json: str | None = None,
+    document_json: str | None = None,
     digest: str | None = None,
-    stage_transcript: str = "pending",
+    stage_acquire: str = "pending",
     stage_normalize: str = "pending",
     stage_summarize: str = "pending",
     stage_write: str = "pending",
@@ -60,20 +60,20 @@ def _seed(
     row_id = f"youtube:{video_id}"
     job_id = f"job-{video_id}"
     db.execute(
-        "INSERT INTO videos (id, video_id, url, canonical_url, metadata, "
-        "stage_resolve, stage_metadata, stage_transcript, stage_normalize, "
-        "stage_summarize, stage_write, transcript_json, transcript_tier, digest, "
+        "INSERT INTO items (id, item_key, url, canonical_url, metadata, "
+        "stage_resolve, stage_metadata, stage_acquire, stage_normalize, "
+        "stage_summarize, stage_write, document_json, transcript_tier, digest, "
         "force_asr, asr_queued_at, created_at, updated_at) "
         "VALUES (?, ?, 'u', 'u', ?, 'done', 'done', ?, ?, ?, ?, ?, ?, ?, ?, ?, 'now', 'now')",
         (
             row_id,
             video_id,
             json.dumps(metadata or {"title": "A Video", "duration_s": 600}),
-            stage_transcript,
+            stage_acquire,
             stage_normalize,
             stage_summarize,
             stage_write,
-            transcript_json,
+            document_json,
             transcript_tier,
             digest,
             int(force_asr),
@@ -81,7 +81,7 @@ def _seed(
         ),
     )
     db.execute(
-        "INSERT INTO jobs (id, video_id, force, status, created_at, updated_at) "
+        "INSERT INTO jobs (id, item_id, force, status, created_at, updated_at) "
         "VALUES (?, ?, ?, 'queued', ?, 'now')",
         (job_id, row_id, int(force), created_at),
     )
@@ -154,7 +154,7 @@ class TestRunJob:
         outcome = await run_job(
             db,
             _settings(),
-            db.execute("SELECT * FROM videos WHERE id = ?", (row_id,)).fetchone(),
+            db.execute("SELECT * FROM items WHERE id = ?", (row_id,)).fetchone(),
             llm=object(),  # type: ignore[arg-type]
             vault=object(),  # type: ignore[arg-type]
             _acquire=acquire,
@@ -179,7 +179,7 @@ class TestRunJob:
         outcome = await run_job(
             db,
             _settings(),
-            db.execute("SELECT * FROM videos WHERE id = ?", (row_id,)).fetchone(),
+            db.execute("SELECT * FROM items WHERE id = ?", (row_id,)).fetchone(),
             llm=object(),  # type: ignore[arg-type]
             vault=object(),  # type: ignore[arg-type]
             _acquire=acquire,
@@ -188,13 +188,13 @@ class TestRunJob:
         )
 
         assert outcome == "done"
-        row = db.execute("SELECT * FROM videos WHERE id = ?", (row_id,)).fetchone()
-        assert row["stage_transcript"] == "done"
+        row = db.execute("SELECT * FROM items WHERE id = ?", (row_id,)).fetchone()
+        assert row["stage_acquire"] == "done"
         assert row["stage_normalize"] == "done"
         assert row["stage_summarize"] == "done"
         assert row["stage_write"] == "done"
         assert row["transcript_tier"] == "T0"
-        assert json.loads(row["transcript_json"]) == [{"start_s": 0, "text": "hello world"}]
+        assert json.loads(row["document_json"]) == [{"start_s": 0, "text": "hello world"}]
         assert json.loads(row["digest"])["tldr"] == "the point"
 
     @pytest.mark.asyncio
@@ -203,10 +203,10 @@ class TestRunJob:
         row_id, _ = _seed(
             db,
             "v1",
-            stage_transcript="done",
+            stage_acquire="done",
             stage_normalize="done",
             transcript_tier="T1",
-            transcript_json=json.dumps([{"start_s": 0, "text": "already here"}]),
+            document_json=json.dumps([{"start_s": 0, "text": "already here"}]),
         )
 
         async def acquire(*_a: Any, **_kw: Any) -> TranscriptAcquired:
@@ -221,7 +221,7 @@ class TestRunJob:
         outcome = await run_job(
             db,
             _settings(),
-            db.execute("SELECT * FROM videos WHERE id = ?", (row_id,)).fetchone(),
+            db.execute("SELECT * FROM items WHERE id = ?", (row_id,)).fetchone(),
             llm=object(),  # type: ignore[arg-type]
             vault=object(),  # type: ignore[arg-type]
             _acquire=acquire,
@@ -234,16 +234,16 @@ class TestRunJob:
 
     @pytest.mark.asyncio
     async def test_drain_handoff_completes_normalize_then_finishes(self, tmp_path: Path) -> None:
-        # The ASR drain job moves only stage_transcript; the runner picks up
+        # The ASR drain job moves only stage_acquire; the runner picks up
         # from stage_normalize on the next pass.
         db = connect(tmp_path / "s.sqlite")
         row_id, _ = _seed(
             db,
             "v1",
-            stage_transcript="done",
+            stage_acquire="done",
             stage_normalize="pending",
             transcript_tier="T2",
-            transcript_json=json.dumps([{"start_s": 0, "text": "asr text"}]),
+            document_json=json.dumps([{"start_s": 0, "text": "asr text"}]),
         )
 
         async def acquire(*_a: Any, **_kw: Any) -> TranscriptAcquired:
@@ -252,7 +252,7 @@ class TestRunJob:
         outcome = await run_job(
             db,
             _settings(),
-            db.execute("SELECT * FROM videos WHERE id = ?", (row_id,)).fetchone(),
+            db.execute("SELECT * FROM items WHERE id = ?", (row_id,)).fetchone(),
             llm=object(),  # type: ignore[arg-type]
             vault=object(),  # type: ignore[arg-type]
             _acquire=acquire,
@@ -261,7 +261,7 @@ class TestRunJob:
         )
 
         assert outcome == "done"
-        row = db.execute("SELECT * FROM videos WHERE id = ?", (row_id,)).fetchone()
+        row = db.execute("SELECT * FROM items WHERE id = ?", (row_id,)).fetchone()
         assert row["stage_normalize"] == "done"
         assert row["stage_write"] == "done"
 
@@ -276,15 +276,15 @@ class TestRunJob:
         outcome = await run_job(
             db,
             _settings(),
-            db.execute("SELECT * FROM videos WHERE id = ?", (row_id,)).fetchone(),
+            db.execute("SELECT * FROM items WHERE id = ?", (row_id,)).fetchone(),
             llm=object(),  # type: ignore[arg-type]
             vault=object(),  # type: ignore[arg-type]
             _acquire=acquire,
         )
 
         assert outcome == "parked"
-        row = db.execute("SELECT * FROM videos WHERE id = ?", (row_id,)).fetchone()
-        assert row["stage_transcript"] == "pending"
+        row = db.execute("SELECT * FROM items WHERE id = ?", (row_id,)).fetchone()
+        assert row["stage_acquire"] == "pending"
         assert row["asr_queued_at"] is not None
 
     @pytest.mark.asyncio
@@ -293,9 +293,9 @@ class TestRunJob:
         row_id, _ = _seed(
             db,
             "v1",
-            stage_transcript="done",
+            stage_acquire="done",
             stage_normalize="done",
-            transcript_json=json.dumps([{"start_s": 0, "text": "x"}]),
+            document_json=json.dumps([{"start_s": 0, "text": "x"}]),
         )
 
         async def summarize(*_a: Any, **_kw: Any) -> VideoDigest:
@@ -304,14 +304,14 @@ class TestRunJob:
         outcome = await run_job(
             db,
             _settings(),
-            db.execute("SELECT * FROM videos WHERE id = ?", (row_id,)).fetchone(),
+            db.execute("SELECT * FROM items WHERE id = ?", (row_id,)).fetchone(),
             llm=object(),  # type: ignore[arg-type]
             vault=object(),  # type: ignore[arg-type]
             _summarize=summarize,
         )
 
         assert outcome == "deferred"
-        row = db.execute("SELECT * FROM videos WHERE id = ?", (row_id,)).fetchone()
+        row = db.execute("SELECT * FROM items WHERE id = ?", (row_id,)).fetchone()
         assert row["stage_summarize"] == "pending"
         assert row["digest"] is None
 
@@ -321,10 +321,10 @@ class TestRunJob:
         row_id, _ = _seed(
             db,
             "v1",
-            stage_transcript="done",
+            stage_acquire="done",
             stage_normalize="done",
             stage_summarize="done",
-            transcript_json=json.dumps([{"start_s": 0, "text": "x"}]),
+            document_json=json.dumps([{"start_s": 0, "text": "x"}]),
             digest=_digest().model_dump_json(),
         )
 
@@ -334,14 +334,14 @@ class TestRunJob:
         outcome = await run_job(
             db,
             _settings(),
-            db.execute("SELECT * FROM videos WHERE id = ?", (row_id,)).fetchone(),
+            db.execute("SELECT * FROM items WHERE id = ?", (row_id,)).fetchone(),
             llm=object(),  # type: ignore[arg-type]
             vault=object(),  # type: ignore[arg-type]
             _write=write,
         )
 
         assert outcome == "deferred"
-        row = db.execute("SELECT * FROM videos WHERE id = ?", (row_id,)).fetchone()
+        row = db.execute("SELECT * FROM items WHERE id = ?", (row_id,)).fetchone()
         assert row["stage_write"] == "pending"
 
     @pytest.mark.asyncio
@@ -350,9 +350,9 @@ class TestRunJob:
         row_id, _ = _seed(
             db,
             "v1",
-            stage_transcript="done",
+            stage_acquire="done",
             stage_normalize="done",
-            transcript_json=json.dumps([{"start_s": 0, "text": "x"}]),
+            document_json=json.dumps([{"start_s": 0, "text": "x"}]),
         )
         notifier = _RecordingNotifier()
 
@@ -362,7 +362,7 @@ class TestRunJob:
         outcome = await run_job(
             db,
             _settings(),
-            db.execute("SELECT * FROM videos WHERE id = ?", (row_id,)).fetchone(),
+            db.execute("SELECT * FROM items WHERE id = ?", (row_id,)).fetchone(),
             llm=object(),  # type: ignore[arg-type]
             vault=object(),  # type: ignore[arg-type]
             notifier=notifier,  # type: ignore[arg-type]
@@ -370,7 +370,7 @@ class TestRunJob:
         )
 
         assert outcome == "failed"
-        row = db.execute("SELECT * FROM videos WHERE id = ?", (row_id,)).fetchone()
+        row = db.execute("SELECT * FROM items WHERE id = ?", (row_id,)).fetchone()
         assert row["stage_summarize"] == "failed"
         assert "boom" in json.loads(row["stage_errors"])["summarize"]
         assert json.loads(row["attempts"])["summarize"] == 1
@@ -382,12 +382,12 @@ class TestRunJob:
         row_id, _ = _seed(
             db,
             "v1",
-            stage_transcript="done",
+            stage_acquire="done",
             stage_normalize="done",
             stage_summarize="done",
             stage_write="done",
             transcript_tier="T1",
-            transcript_json=json.dumps([{"start_s": 0, "text": "stale"}]),
+            document_json=json.dumps([{"start_s": 0, "text": "stale"}]),
             digest=_digest(tldr="stale digest").model_dump_json(),
         )
 
@@ -403,7 +403,7 @@ class TestRunJob:
         outcome = await run_job(
             db,
             _settings(),
-            db.execute("SELECT * FROM videos WHERE id = ?", (row_id,)).fetchone(),
+            db.execute("SELECT * FROM items WHERE id = ?", (row_id,)).fetchone(),
             force=True,
             llm=object(),  # type: ignore[arg-type]
             vault=object(),  # type: ignore[arg-type]
@@ -414,7 +414,7 @@ class TestRunJob:
 
         assert outcome == "done"
         assert reacquired == [True]
-        row = db.execute("SELECT * FROM videos WHERE id = ?", (row_id,)).fetchone()
+        row = db.execute("SELECT * FROM items WHERE id = ?", (row_id,)).fetchone()
         assert row["transcript_tier"] == "T2"
         assert json.loads(row["digest"])["tldr"] == "fresh digest"
 
@@ -483,7 +483,7 @@ class TestRunDueJobs:
         db = connect(tmp_path / "s.sqlite")
         row_id, _ = _seed(db, "v1", created_at="2026-01-01T00:00:00+00:00")
         db.execute(
-            "INSERT INTO jobs (id, video_id, force, status, created_at, updated_at) "
+            "INSERT INTO jobs (id, item_id, force, status, created_at, updated_at) "
             "VALUES ('job-v1-b', ?, 1, 'queued', '2026-01-02T00:00:00+00:00', 'now')",
             (row_id,),
         )
@@ -492,7 +492,7 @@ class TestRunDueJobs:
         calls: list[str] = []
 
         async def fake(_db: Any, _s: Any, row: Any, **_kw: Any) -> str:
-            calls.append(row["video_id"])
+            calls.append(row["item_key"])
             return "done"
 
         await run_due_jobs(
@@ -525,7 +525,7 @@ class TestRunDueJobs:
         calls: list[str] = []
 
         async def fake(_db: Any, _s: Any, row: Any, **_kw: Any) -> str:
-            calls.append(row["video_id"])
+            calls.append(row["item_key"])
             return "done"
 
         await run_due_jobs(

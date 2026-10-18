@@ -35,7 +35,7 @@ def _settings(**overrides: object) -> Settings:
 def _seed_pending(db, video_id: str, *, metadata: dict | None = None) -> str:
     row_id = f"youtube:{video_id}"
     db.execute(
-        "INSERT INTO videos (id, video_id, url, canonical_url, metadata, created_at, updated_at) "
+        "INSERT INTO items (id, item_key, url, canonical_url, metadata, created_at, updated_at) "
         "VALUES (?, ?, 'u', 'u', ?, 'now', 'now')",
         (row_id, video_id, json.dumps(metadata or {"title": "A Video"})),
     )
@@ -55,8 +55,8 @@ class TestWorkerOffline:
 
         count = await drain_pending_asr(db, _settings(), _probe=probe)
         assert count == 0
-        row = db.execute("SELECT stage_transcript FROM videos WHERE video_id = 'v1'").fetchone()
-        assert row["stage_transcript"] == "pending"  # untouched
+        row = db.execute("SELECT stage_acquire FROM items WHERE item_key = 'v1'").fetchone()
+        assert row["stage_acquire"] == "pending"  # untouched
 
 
 class TestWorkerOnline:
@@ -83,12 +83,12 @@ class TestWorkerOnline:
 
         for vid in ("v1", "v2"):
             row = db.execute(
-                "SELECT * FROM videos WHERE video_id = ?", (vid,)
+                "SELECT * FROM items WHERE item_key = ?", (vid,)
             ).fetchone()
-            assert row["stage_transcript"] == "done"
+            assert row["stage_acquire"] == "done"
             assert row["transcript_tier"] == "T2"
             assert row["asr_queued_at"] is None
-            assert json.loads(row["transcript_json"]) == [{"start_s": 0, "text": "ok"}]
+            assert json.loads(row["document_json"]) == [{"start_s": 0, "text": "ok"}]
 
     @pytest.mark.asyncio
     async def test_stops_on_the_first_retry_failure(self, tmp_path: Path) -> None:
@@ -109,8 +109,8 @@ class TestWorkerOnline:
         assert count == 0
         assert calls == ["v1"]  # never even tried v2
 
-        row = db.execute("SELECT * FROM videos WHERE video_id = 'v1'").fetchone()
-        assert row["stage_transcript"] == "pending"  # still parked
+        row = db.execute("SELECT * FROM items WHERE item_key = 'v1'").fetchone()
+        assert row["stage_acquire"] == "pending"  # still parked
         assert row["asr_queued_at"] is not None
 
     @pytest.mark.asyncio
@@ -148,12 +148,12 @@ class TestStaleAlert:
         db = connect(tmp_path / "state.sqlite")
         row_id = _seed_pending(db, "v1")
         db.execute(
-            "UPDATE videos SET asr_queued_at = '2020-01-01T00:00:00+00:00' WHERE id = ?",
+            "UPDATE items SET asr_queued_at = '2020-01-01T00:00:00+00:00' WHERE id = ?",
             (row_id,),
         )
         db.commit()
         stale = alert_on_stale_pending_asr(db, _settings())
-        assert [r["video_id"] for r in stale] == ["v1"]
+        assert [r["item_key"] for r in stale] == ["v1"]
 
     def test_fresh_rows_are_not_reported(self, tmp_path: Path) -> None:
         db = connect(tmp_path / "state.sqlite")

@@ -160,9 +160,9 @@ def _seed_summarised_video(db, video_id: str = "vid1") -> None:
         tldr="t", summary_md="s", key_points=["p"], relevance="medium"
     ).model_dump_json()
     db.execute(
-        "INSERT INTO videos (id, video_id, url, canonical_url, metadata, "
-        "stage_resolve, stage_metadata, stage_transcript, stage_normalize, stage_summarize, "
-        "stage_write, transcript_tier, transcript_json, digest, created_at, updated_at) "
+        "INSERT INTO items (id, item_key, url, canonical_url, metadata, "
+        "stage_resolve, stage_metadata, stage_acquire, stage_normalize, stage_summarize, "
+        "stage_write, transcript_tier, document_json, digest, created_at, updated_at) "
         "VALUES (?, ?, 'u', 'u', ?, 'done', 'done', 'done', 'done', 'done', 'pending', 'T1', ?, ?, "
         "'now', 'now')",
         (
@@ -174,7 +174,7 @@ def _seed_summarised_video(db, video_id: str = "vid1") -> None:
         ),
     )
     db.execute(
-        "INSERT INTO jobs (id, video_id, force, status, created_at, updated_at) "
+        "INSERT INTO jobs (id, item_id, force, status, created_at, updated_at) "
         "VALUES ('job1', ?, 0, 'queued', 'now', 'now')",
         (row_id,),
     )
@@ -189,7 +189,7 @@ class TestJobStatus:
     def test_reports_each_stage_and_the_note_path(self, settings: Settings) -> None:
         app = create_app(settings)
         _seed_summarised_video(app.state.db)
-        app.state.db.execute("UPDATE videos SET note_path = 'n.md' WHERE video_id = 'vid1'")
+        app.state.db.execute("UPDATE items SET note_path = 'n.md' WHERE item_key = 'vid1'")
         app.state.db.commit()
         client = TestClient(app)
 
@@ -213,7 +213,7 @@ class TestRewrite:
         assert resp.json()["note_path"].endswith(".md")
         assert any("13 video-summaries" in p for p in vault.projected)
         row = app.state.db.execute(
-            "SELECT stage_write FROM videos WHERE video_id = 'vid1'"
+            "SELECT stage_write FROM items WHERE item_key = 'vid1'"
         ).fetchone()
         assert row["stage_write"] == "done"
 
@@ -224,7 +224,7 @@ class TestRewrite:
     def test_video_without_a_digest_is_409(self, settings: Settings) -> None:
         app = _app_with_vault(settings, _FakeVault())
         app.state.db.execute(
-            "INSERT INTO videos (id, video_id, url, canonical_url, created_at, updated_at) "
+            "INSERT INTO items (id, item_key, url, canonical_url, created_at, updated_at) "
             "VALUES ('youtube:bare', 'bare', 'u', 'u', 'now', 'now')"
         )
         app.state.db.commit()
@@ -238,13 +238,13 @@ class TestMetrics:
         db = app.state.db
         _seed_summarised_video(db, "vid1")
         db.execute(
-            "INSERT INTO videos (id, video_id, url, canonical_url, metadata, transcript_tier, "
+            "INSERT INTO items (id, item_key, url, canonical_url, metadata, transcript_tier, "
             "stage_write, created_at, updated_at) VALUES ('youtube:v2', 'v2', 'u', 'u', ?, 'T2', "
             "'done', 'now', 'now')",
             (json.dumps({"duration_s": 1800}),),
         )
         db.execute(
-            "INSERT INTO metric_events (kind, video_id, value, meta, created_at) VALUES "
+            "INSERT INTO metric_events (kind, item_id, value, meta, created_at) VALUES "
             "('llm_call', 'vid1', 0.002, ?, 'now')",
             (json.dumps({"tier": "reduce", "input_tokens": 100, "output_tokens": 50}),),
         )
